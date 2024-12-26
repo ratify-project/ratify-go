@@ -26,6 +26,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      checks: write
     strategy:
       matrix:
         go-version: ['1.22', '1.23']

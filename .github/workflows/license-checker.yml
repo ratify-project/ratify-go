@@ -23,13 +23,11 @@ on:
       - main
       - release-*
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   check-license:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
