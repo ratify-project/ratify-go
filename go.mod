@@ -1,3 +1,3 @@
 module github.com/ratify-project/ratify-go
 
-go 1.23.1
+go 1.22.7
