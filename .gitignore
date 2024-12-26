@@ -1,0 +1,8 @@
+bin
+dist/
+.idea
+__debug_bin
+coverage.txt
+
+# IDE files
+.vscode/

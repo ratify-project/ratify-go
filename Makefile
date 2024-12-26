@@ -31,7 +31,7 @@ check-encoding:
 .PHONY: fix-encoding
 fix-encoding:
 	find . -not -path "./vendor/*" -name "*.go" -type f -exec sed -i -e "s/\r//g" {} +
-	find scripts -name "*.sh" -type f -exec sed -i -e "s/\r//g" {} +
+	find . -name "*.sh" -type f -exec sed -i -e "s/\r//g" {} +
 
 .PHONY: vendor
 vendor:
