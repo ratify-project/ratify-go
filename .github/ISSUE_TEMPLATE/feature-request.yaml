@@ -11,33 +11,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Template created based on verbiage from https://github.com/oras-project/oras/blob/cc40e430ee0cc124250f9855a2e99f535f759221/.github/ISSUE_TEMPLATE/feature-request.yaml
-name: Feature Request
-description: File a feature request
+# Template created based on verbiage from https://github.com/notaryproject/notation-go/blob/v1.2.1/.github/ISSUE_TEMPLATE/feature-request.yaml
+name: 🚀 Feature Request
+description: Suggest an idea for this project.
 labels: [enhancement, triage]
 body:
   - type: markdown
-    id: preface
     attributes:
-      value: "Thank you for submitting new features for ratify-go."
+      value: |
+        Thank you for taking the time to suggest a useful feature for the project!
   - type: textarea
-    id: description
-    attributes:
-      label: "What would you like to be added?"
+    id: problem
     validations:
       required: true
+    attributes:
+      label: "Is your feature request related to a problem?"
+      description: "A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]"
   - type: textarea
     id: solution
+    validations:
+      required: true
     attributes:
-      label: "Anything else you would like to add?"
-      description: "Miscellaneous information that will assist in solving the issue."
+      label: "What solution do you propose?"
+      description: "A clear and concise description of what you want to happen."
+  - type: textarea
+    id: alternatives
+    validations:
+      required: true
+    attributes:
+      label: "What alternatives have you considered?"
+      description: "A clear and concise description of any alternative solutions or features you've considered."
+  - type: textarea
+    id: context
     validations:
       required: false
-  - type: checkboxes
-    id: idea
     attributes:
-      label: "Are you willing to submit PRs to contribute to this feature?"
-      description: "This is absolutely not required, but we are happy to guide you in the contribution process
-        especially when you already have a good proposal or understanding of how to implement it. Join us at https://slack.cncf.io/ and choose #ratify channel."
-      options:
-        - label: Yes, I am willing to implement it.
+      label: "Any additional context?"
+      description: "Add any other context or screenshots about the feature request here."
+  - type: markdown
+    attributes:
+      value: |
+        If you want to contribute to this project, we will be happy to guide you through the contribution process especially when you already have a good proposal or understanding of how to improve the functionality. Join us at https://slack.cncf.io/ and choose #ratify channel.
