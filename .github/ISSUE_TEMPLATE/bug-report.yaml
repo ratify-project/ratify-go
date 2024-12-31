@@ -53,7 +53,7 @@ body:
     validations:
       required: true
     attributes:
-      label: What is the version of your ratify-go Library?
+      label: What is the version of your ratify-go library?
       description: "Check the `go.mod` file for the library version."
   - type: markdown
     attributes:
