@@ -27,8 +27,6 @@ on:
       - release-*
   workflow_dispatch:
 
-permissions: read-all
-
 jobs:
   analysis:
     name: Scorecards analysis
