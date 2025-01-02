@@ -38,27 +38,25 @@ const (
 )
 
 var (
-	testEC = Register(testGroup, ErrorDescriptor{
+	testEC = Register(ErrorDescriptor{
 		Value:       testErrCode1,
-		Message:     testMessage,
 		Description: testDescription,
 	})
 
-	testEC2 = Register(testGroup, ErrorDescriptor{
+	testEC2 = Register(ErrorDescriptor{
 		Value: testErrCode2,
 	})
 )
 
 func TestRegisterPanic(t *testing.T) {
 	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("Register should panic")
+		if r := recover(); r != nil {
+			t.Fatalf("Register should not panic")
 		}
 	}()
 
-	_ = Register(testGroup, ErrorDescriptor{
+	_ = Register(ErrorDescriptor{
 		Value:       testErrCode1,
-		Message:     testMessage,
 		Description: testDescription,
 	})
 }
@@ -70,10 +68,11 @@ func TestErrorCode(t *testing.T) {
 	}
 }
 
-func TestError(t *testing.T) {
-	expectedStr := "test error code 1"
-	if testEC.Error() != expectedStr {
-		t.Fatalf("expected: %s, got: %s", expectedStr, testEC.Error())
+func TestWithError(t *testing.T) {
+	innerErr := errors.New(testMessage)
+	wrappedErr := testEC.WithError(innerErr)
+	if wrappedErr.Unwrap() != innerErr {
+		t.Fatalf("expected inner error: %v, got: %v", innerErr, wrappedErr.Unwrap())
 	}
 }
 
@@ -105,23 +104,10 @@ func TestDescriptor(t *testing.T) {
 	}
 }
 
-func TestMessage(t *testing.T) {
-	if testEC.Message() != testMessage {
-		t.Fatalf("expected message: %s, got: %s", testMessage, testEC.Message())
-	}
-}
-
 func TestWithDetail(t *testing.T) {
 	err := testEC.WithDetail(testDetail1)
 	if err.detail != testDetail1 {
 		t.Fatalf("expected detail: %s, got: %s", testDetail1, err.detail)
-	}
-}
-
-func TestWithError(t *testing.T) {
-	err := testEC.WithError(testEC2)
-	if !errors.Is(errors.Unwrap(err), testEC2) {
-		t.Fatalf("expected error: %s, got: %s", testEC2, errors.Unwrap(err))
 	}
 }
 

@@ -25,7 +25,7 @@ import (
 // result evaluated by the policy enforcer.
 type ValidationResult struct {
 	IsSuccess       bool                        `json:"isSuccess,omitempty"`
-	ArtifactReports []*ArtifactValidationReport `json:"verifierReports"`
+	ArtifactReports []*ArtifactValidationReport `json:"artifactReports"`
 }
 
 // ArtifactValidationReport describes the results of verifying an artifact and its

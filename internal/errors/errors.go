@@ -18,9 +18,8 @@ package errors
 var (
 	// ErrorCodeUnknown is a generic error that can be used as a last
 	// resort if there is no situation-specific error message that can be used
-	ErrorCodeUnknown = Register("errcode", ErrorDescriptor{
+	ErrorCodeUnknown = Register(ErrorDescriptor{
 		Value:       "UNKNOWN",
-		Message:     "unknown error",
 		Description: `Generic error returned when the error does not have an API classification.`,
 	})
 )

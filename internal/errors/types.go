@@ -27,11 +27,7 @@ var (
 	registerLock sync.Mutex
 )
 
-var (
-	errorCodeToDescriptors = map[ErrorCode]ErrorDescriptor{}
-	idToDescriptors        = map[string]ErrorDescriptor{}
-	groupToDescriptors     = map[string][]ErrorDescriptor{}
-)
+var errorCodeToDescriptors = map[ErrorCode]ErrorDescriptor{}
 
 // ErrorCode represents the error type. The errors are serialized via strings
 // and the integer format may change and should *never* be exported.
@@ -41,7 +37,6 @@ type ErrorCode int
 type Error struct {
 	originalError error
 	code          ErrorCode
-	message       string
 	detail        interface{}
 	remediation   string
 	isRootError   bool // isRootError is true if the originalError is either nil or not an Error type
@@ -57,10 +52,6 @@ type ErrorDescriptor struct {
 	// keyed value when serializing api errors.
 	Value string
 
-	// Message is a short, human readable description of the error condition
-	// included in API responses.
-	Message string
-
 	// Description provides a complete account of the errors purpose, suitable
 	// for use in documentation.
 	Description string
@@ -71,16 +62,9 @@ func (ec ErrorCode) ErrorCode() ErrorCode {
 	return ec
 }
 
-// Error returns the ID/Value
-func (ec ErrorCode) Error() string {
-	// NOTE(stevvooe): Cannot use message here since it may have unpopulated args.
-	return strings.ToLower(strings.Replace(ec.String(), "_", " ", -1))
-}
-
 // Descriptor returns the descriptor for the error code.
 func (ec ErrorCode) Descriptor() ErrorDescriptor {
 	d, ok := errorCodeToDescriptors[ec]
-
 	if !ok {
 		return ErrorCodeUnknown.Descriptor()
 	}
@@ -88,36 +72,25 @@ func (ec ErrorCode) Descriptor() ErrorDescriptor {
 	return d
 }
 
-// Message returned the human-readable error message for this error code.
-func (ec ErrorCode) Message() string {
-	return ec.Descriptor().Message
-}
-
-// String returns the canonical identifier for this error code.
-func (ec ErrorCode) String() string {
-	return ec.Descriptor().Value
-}
-
 // WithDetail returns a new Error object with details about the error.
 func (ec ErrorCode) WithDetail(detail interface{}) Error {
-	return newError(ec, ec.Message()).WithDetail(detail)
+	return newError(ec).WithDetail(detail)
 }
 
 // WithError returns a new Error object with original error.
 func (ec ErrorCode) WithError(err error) Error {
-	return newError(ec, ec.Message()).WithError(err)
+	return newError(ec).WithError(err)
 }
 
 // WithRemediation returns a new Error object with remediation.
 func (ec ErrorCode) WithRemediation(link string) Error {
-	return newError(ec, ec.Message()).WithRemediation(link)
+	return newError(ec).WithRemediation(link)
 }
 
 // NewError returns a new Error object.
 func (ec ErrorCode) NewError(remediation string, err error, detail interface{}) Error {
 	return Error{
 		code:          ec,
-		message:       ec.Message(),
 		originalError: err,
 		detail:        detail,
 		remediation:   remediation,
@@ -125,10 +98,9 @@ func (ec ErrorCode) NewError(remediation string, err error, detail interface{}) 
 	}
 }
 
-func newError(code ErrorCode, message string) Error {
+func newError(code ErrorCode) Error {
 	return Error{
 		code:        code,
-		message:     message,
 		isRootError: true,
 	}
 }
@@ -245,22 +217,17 @@ func (e Error) WithRemediation(remediation string) Error {
 
 // Register will make the passed-in error known to the environment and
 // return a new ErrorCode
-func Register(group string, descriptor ErrorDescriptor) ErrorCode {
+func Register(descriptor ErrorDescriptor) ErrorCode {
 	registerLock.Lock()
 	defer registerLock.Unlock()
 
 	descriptor.Code = ErrorCode(nextCode)
 
-	if _, ok := idToDescriptors[descriptor.Value]; ok {
-		panic(fmt.Sprintf("ErrorValue %q is already registered", descriptor.Value))
-	}
 	if _, ok := errorCodeToDescriptors[descriptor.Code]; ok {
 		panic(fmt.Sprintf("ErrorCode %v is already registered", descriptor.Code))
 	}
 
-	groupToDescriptors[group] = append(groupToDescriptors[group], descriptor)
 	errorCodeToDescriptors[descriptor.Code] = descriptor
-	idToDescriptors[descriptor.Value] = descriptor
 
 	nextCode++
 	return descriptor.Code

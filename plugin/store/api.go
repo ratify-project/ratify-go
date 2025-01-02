@@ -43,7 +43,7 @@ type ReferrerStore interface {
 	GetBlobContent(ctx context.Context, subjectReference common.Reference, digest digest.Digest) ([]byte, error)
 
 	// GetReferenceManifest returns the reference artifact manifest as given by the descriptor.
-	GetReferenceManifest(ctx context.Context, subjectReference common.Reference, referenceDesc oci.Descriptor) (common.ReferenceManifest, error)
+	GetReferenceManifest(ctx context.Context, subjectReference common.Reference, referenceDesc oci.Descriptor) (oci.Manifest, error)
 
 	// GetSubjectDescriptor returns the descriptor for the given subject.
 	GetSubjectDescriptor(ctx context.Context, subjectReference common.Reference) (oci.Descriptor, error)
