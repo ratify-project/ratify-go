@@ -23,9 +23,11 @@ import (
 	"github.com/ratify-project/ratify-go/internal/common"
 )
 
-// ListReferrersResult represents the result of ListReferrers API
+// ListReferrersResult represents a paginated result of ListReferrers API.
 type ListReferrersResult struct {
+	// Referrers is the list of referrers in the current page.
 	Referrers []oci.Descriptor
+	// NextToken is the token to get the next page of results.
 	NextToken string
 }
 
@@ -36,6 +38,8 @@ type ReferrerStore interface {
 
 	// ListReferrers returns the immediate set of supply chain artifacts for the given subject
 	// represented as artifact manifests.
+	// Note: This API supports pagination. The nextToken is used to get the next page of results.
+	// The nextToken is supposed to be empty if there are no more results.
 	ListReferrers(ctx context.Context, subjectReference common.Reference, artifactTypes []string, nextToken string) (ListReferrersResult, error)
 
 	// GetBlobContent returns the blob with the given digest.

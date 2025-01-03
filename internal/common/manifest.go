@@ -19,7 +19,8 @@ import (
 	oci "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// ReferenceManifest describes an artifact manifest
+// ReferenceManifest describes an artifact manifest in
+// `application/vnd.oci.artifact.manifest.v1+json` mediatype.
 type ReferenceManifest struct {
 	MediaType    string            `json:"mediaType"`
 	ArtifactType string            `json:"artifactType,omitempty"`

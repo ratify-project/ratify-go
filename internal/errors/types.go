@@ -62,6 +62,17 @@ func (ec ErrorCode) ErrorCode() ErrorCode {
 	return ec
 }
 
+// Error returns the value of this error code in lower case.
+func (ec ErrorCode) Error() string {
+	// NOTE(stevvooe): Cannot use message here since it may have unpopulated args.
+	return strings.ToLower(strings.Replace(ec.String(), "_", " ", -1))
+}
+
+// String returns the canonical identifier for this error code.
+func (ec ErrorCode) String() string {
+	return ec.Descriptor().Value
+}
+
 // Descriptor returns the descriptor for the error code.
 func (ec ErrorCode) Descriptor() ErrorDescriptor {
 	d, ok := errorCodeToDescriptors[ec]

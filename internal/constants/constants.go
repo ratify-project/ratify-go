@@ -16,6 +16,9 @@ limitations under the License.
 package constants
 
 const (
+	// Name and Type are the keys to identify a plugin.
+	// Name specifies a plugin's unique identifier, allowing multiple plugins of the same type.
 	Name = "name"
+	// Type represents a plugin type, which defines the plugin kind.
 	Type = "type"
 )

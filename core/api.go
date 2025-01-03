@@ -23,7 +23,11 @@ import (
 
 // VerifyParameters describes the artifact validation parameters
 type VerifyParameters struct {
-	Subject        string   `json:"subjectReference"`
+	// SubjectArtifact is the artifact to be validated. Required.
+	SubjectArtifact string `json:"subjectArtifact"`
+	// ReferenceTypes is a list of reference types that should be verified in
+	// associated artifacts. Empty list means all artifacts should be verified.
+	// Optional.
 	ReferenceTypes []string `json:"referenceTypes,omitempty"`
 }
 

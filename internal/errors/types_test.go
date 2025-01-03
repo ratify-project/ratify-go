@@ -61,6 +61,12 @@ func TestRegisterPanic(t *testing.T) {
 	})
 }
 
+func TestErrorCode_Error(t *testing.T) {
+	if err := testEC.Error(); err != "test error code 1" {
+		t.Fatalf("expected: %s, got: %s", "test error code 1", err)
+	}
+}
+
 func TestErrorCode(t *testing.T) {
 	ec := ErrorCode(1)
 	if ec.ErrorCode() != 1 {

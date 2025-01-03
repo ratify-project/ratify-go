@@ -24,9 +24,13 @@ var RegisteredPolicyEnforcers = make(map[string]PolicyEnforcerFactory)
 
 // PolicyEnforcerConfig represents the configuration of a policy plugin
 type PolicyEnforcerConfig struct {
-	Name       string                 `json:"name"`
-	Type       string                 `json:"type"`
-	Parameters map[string]interface{} `json:"parameters"`
+	// Name is unique identifier of a policy enforcer. Required.
+	Name string `json:"name"`
+	// Type of the policy enforcer. Note: there could be multiple policy enforcers
+	// of the same type with different names. Required.
+	Type string `json:"type"`
+	// Parameters of the policy enforcer. Optional.
+	Parameters map[string]interface{} `json:"parameters,omitempty"`
 }
 
 // PolicyEnforcerFactory is an interface that defines create method to create a

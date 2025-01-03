@@ -20,15 +20,21 @@ import (
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// Reference describes an image reference identifier that includes properties like digest, tag
+// Reference describes an image reference identifier that includes properties like digest, tag.
 type Reference struct {
-	Path       string
-	Digest     digest.Digest
-	Tag        string
-	Original   string
+	// Path is the repository path of the artifact.
+	Path string
+	// Digest is the digest of the artifact.
+	Digest digest.Digest
+	// Tag is the tag of the artifact.
+	Tag string
+	// Original is the original string representation of the reference.
+	Original string
+	// Descriptor is the descriptor of the artifact.
 	Descriptor v1.Descriptor
 }
 
+// String returns the original string representation of the reference.
 func (ref Reference) String() string {
 	return ref.Original
 }

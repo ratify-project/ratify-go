@@ -24,9 +24,13 @@ var RegisteredStores = make(map[string]StoreFactory)
 
 // StoreConfig represents the configuration of a store.
 type StoreConfig struct {
-	Name       string                 `json:"name"`
-	Type       string                 `json:"type"`
-	Parameters map[string]interface{} `json:"parameters"`
+	// Name is unique identifier of the store. Required.
+	Name string `json:"name"`
+	// Type of the store. Required.
+	// Note: there could be multiple stores of the same type with different names.
+	Type string `json:"type"`
+	// Parameters of the store. Optional.
+	Parameters map[string]interface{} `json:"parameters,omitempty"`
 }
 
 // StoreFactory is an interface that defines create method to create a store

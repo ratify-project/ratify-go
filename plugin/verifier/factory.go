@@ -22,10 +22,14 @@ var RegisteredVerifiers = make(map[string]VerifierFactory)
 
 // VerifierConfig represents the configuration of a verifier.
 type VerifierConfig struct {
-	Name          string                 `json:"name"`
-	Type          string                 `json:"type"`
-	ArtifactTypes []string               `json:"artifactTypes"`
-	Parameters    map[string]interface{} `json:"parameters"`
+	// Name is the unique identifier of the verifier. Required.
+	Name string `json:"name"`
+	// Type is the type of the verifier. Note: there could be multiple verifiers of the same type with different names. Required.
+	Type string `json:"type"`
+	// ArtifactTypes is the list of artifact types that the verifier can verify. Required.
+	ArtifactTypes []string `json:"artifactTypes"`
+	// Parameters is additional parameters of the verifier. Optional.
+	Parameters map[string]interface{} `json:"parameters,omitempty"`
 }
 
 // VerifierFactory is an interface that defines create method to create a verifier

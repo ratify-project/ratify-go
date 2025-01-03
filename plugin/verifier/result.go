@@ -19,13 +19,21 @@ import "github.com/ratify-project/ratify-go/internal/errors"
 
 // VerifierResult defines the verification result that a verifier plugin must return.
 type VerifierResult struct {
-	IsSuccess    bool        `json:"isSuccess"`
-	Message      string      `json:"message"`
-	ErrorReason  string      `json:"errorReason,omitempty"`
-	Remediation  string      `json:"remediation,omitempty"`
-	VerifierName string      `json:"verifierName,omitempty"`
-	VerifierType string      `json:"verifierType,omitempty"`
-	Extensions   interface{} `json:"extensions"`
+	// IsSuccess indicates whether the verification was successful or not. Required.
+	IsSuccess bool `json:"isSuccess"`
+	// Message is a human-readable message that describes the verification result. Required.
+	Message string `json:"message"`
+	// VerifierName is the name of the verifier that produced this result. Required.
+	VerifierName string `json:"verifierName"`
+	// VerifierType is the type of the verifier that produced this result. Required.
+	VerifierType string `json:"verifierType"`
+	// ErrorReason is a machine-readable reason for the verification failure. Optional.
+	ErrorReason string `json:"errorReason,omitempty"`
+	// Remediation is a machine-readable remediation for the verification failure. Optional.
+	Remediation string `json:"remediation,omitempty"`
+	// Extensions is additional information that can be used to provide more
+	// context about the verification result. Optional.
+	Extensions interface{} `json:"extensions,omitempty"`
 }
 
 // NewVerifierResult creates a new VerifierResult object with the given parameters.
