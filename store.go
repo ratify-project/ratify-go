@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package store
+package ratify
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/opencontainers/go-digest"
 	oci "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/ratify-project/ratify-go/internal/common"
 )
+
+// RegisteredStores saves the registered store factories.
+var RegisteredStores = make(map[string]func(config StoreConfig) (ReferrerStore, error))
 
 // ListReferrersResult represents a paginated result of ListReferrers API.
 type ListReferrersResult struct {
@@ -51,4 +55,38 @@ type ReferrerStore interface {
 
 	// GetSubjectDescriptor returns the descriptor for the given subject.
 	GetSubjectDescriptor(ctx context.Context, subjectReference common.Reference) (oci.Descriptor, error)
+}
+
+// StoreConfig represents the configuration of a store.
+type StoreConfig struct {
+	// Name is unique identifier of the store. Required.
+	Name string `json:"name"`
+	// Type of the store. Required.
+	// Note: there could be multiple stores of the same type with different names.
+	Type string `json:"type"`
+	// Parameters of the store. Optional.
+	Parameters map[string]interface{} `json:"parameters,omitempty"`
+}
+
+// RegisterStore registers a store factory to the system.
+func RegisterStore(name string, factory func(config StoreConfig) (ReferrerStore, error)) {
+	if factory == nil {
+		panic("store factory cannot be nil")
+	}
+	if _, registered := RegisteredStores[name]; registered {
+		panic(fmt.Sprintf("store factory named %s already registered", name))
+	}
+	RegisteredStores[name] = factory
+}
+
+// CreateStore creates a store instance if it belongs to a registered type.
+func CreateStore(config StoreConfig) (ReferrerStore, error) {
+	if config.Name == "" || config.Type == "" {
+		return nil, fmt.Errorf("name or type is not provided in the store config")
+	}
+	storeFactory, ok := RegisteredStores[config.Type]
+	if ok {
+		return storeFactory(config)
+	}
+	return nil, fmt.Errorf("store factory of type %s is not registered", config.Type)
 }

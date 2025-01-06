@@ -13,57 +13,53 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package store
+package ratify
 
 import "testing"
 
-const test = "test"
-
-type mockFactory struct{}
-
-func (f *mockFactory) Create(config StoreConfig) (ReferrerStore, error) {
+func createPolicyEnforcer(config PolicyEnforcerConfig) (PolicyEnforcer, error) {
 	return nil, nil
 }
 
-func TestRegister_NilFactory_Panic(t *testing.T) {
+func TestRegisterPolicyEnforcer_NilFactory_Panic(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
 	}()
-	Register(test, nil)
+	RegisterPolicyEnforcer(test, nil)
 }
 
-func TestRegister_DuplicateFactory_Panic(t *testing.T) {
+func TestRegisterPolicyEnforcer_DuplicateFactory_Panic(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		RegisteredStores = make(map[string]StoreFactory)
+		RegisteredPolicyEnforcers = make(map[string]func(config PolicyEnforcerConfig) (PolicyEnforcer, error))
 	}()
-	Register(test, &mockFactory{})
-	Register(test, &mockFactory{})
+	RegisterPolicyEnforcer(test, createPolicyEnforcer)
+	RegisterPolicyEnforcer(test, createPolicyEnforcer)
 }
 
-func TestCreateStore(t *testing.T) {
-	Register(test, &mockFactory{})
+func TestCreatePolicyEnforcer(t *testing.T) {
+	RegisterPolicyEnforcer(test, createPolicyEnforcer)
 	defer func() {
-		RegisteredStores = make(map[string]StoreFactory)
+		RegisteredPolicyEnforcers = make(map[string]func(config PolicyEnforcerConfig) (PolicyEnforcer, error))
 	}()
 
 	tests := []struct {
 		name        string
-		config      StoreConfig
+		config      PolicyEnforcerConfig
 		expectedErr bool
 	}{
 		{
 			name:        "no type provided",
-			config:      StoreConfig{},
+			config:      PolicyEnforcerConfig{},
 			expectedErr: true,
 		},
 		{
 			name: "non-registered type",
-			config: StoreConfig{
+			config: PolicyEnforcerConfig{
 				Name: test,
 				Type: "non-registered",
 			},
@@ -71,7 +67,7 @@ func TestCreateStore(t *testing.T) {
 		},
 		{
 			name: "registered type",
-			config: StoreConfig{
+			config: PolicyEnforcerConfig{
 				Name: test,
 				Type: test,
 			},
@@ -81,7 +77,7 @@ func TestCreateStore(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := CreateStore(test.config)
+			_, err := CreatePolicyEnforcer(test.config)
 			if test.expectedErr != (err != nil) {
 				t.Errorf("Expected error: %v, got: %v", test.expectedErr, err)
 			}

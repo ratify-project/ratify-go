@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package verifier
+package ratify
 
 import (
 	"testing"
 
-	"github.com/ratify-project/ratify-go/internal/errors"
+	"github.com/ratify-project/ratify-go/errors"
 )
 
 const (
@@ -27,12 +27,81 @@ const (
 	testMsg  = "testMsg"
 	testMsg2 = "testMsg2"
 	testMsg3 = "testMsg3"
+	test     = "test"
 )
 
 var (
 	testErr       = errors.ErrorCodeUnknown.WithDetail(testMsg2)
 	testNestedErr = errors.ErrorCodeUnknown.WithError(testErr).WithDetail(testMsg3)
 )
+
+func createVerifier(config VerifierConfig) (Verifier, error) {
+	return nil, nil
+}
+
+func TestRegisterVerifier_NilFactory_Panic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected to panic")
+		}
+	}()
+	RegisterVerifier(test, nil)
+}
+
+func TestRegisterVerifier_DuplicateFactory_Panic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected to panic")
+		}
+		RegisteredVerifiers = make(map[string]func(config VerifierConfig) (Verifier, error))
+	}()
+	RegisterVerifier(test, createVerifier)
+	RegisterVerifier(test, createVerifier)
+}
+
+func TestCreateVerifier(t *testing.T) {
+	RegisterVerifier(test, createVerifier)
+	defer func() {
+		RegisteredVerifiers = make(map[string]func(config VerifierConfig) (Verifier, error))
+	}()
+
+	tests := []struct {
+		name        string
+		config      VerifierConfig
+		expectedErr bool
+	}{
+		{
+			name:        "no type provided",
+			config:      VerifierConfig{},
+			expectedErr: true,
+		},
+		{
+			name: "non-registered type",
+			config: VerifierConfig{
+				Name: test,
+				Type: "non-registered",
+			},
+			expectedErr: true,
+		},
+		{
+			name: "registered type",
+			config: VerifierConfig{
+				Name: test,
+				Type: test,
+			},
+			expectedErr: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := CreateVerifier(test.config)
+			if test.expectedErr != (err != nil) {
+				t.Errorf("Expected error: %v, got: %v", test.expectedErr, err)
+			}
+		})
+	}
+}
 
 func TestNewVerifierResult(t *testing.T) {
 	tests := []struct {

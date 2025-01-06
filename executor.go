@@ -13,16 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package core
+package ratify
 
 import (
 	"context"
-
-	"github.com/ratify-project/ratify-go/plugin/policyenforcer"
 )
 
-// VerifyParameters describes the artifact validation parameters
-type VerifyParameters struct {
+// ValidateArtifactOptions describes the artifact validation options.
+type ValidateArtifactOptions struct {
 	// SubjectArtifact is the artifact to be validated. Required.
 	SubjectArtifact string `json:"subjectArtifact"`
 	// ReferenceTypes is a list of reference types that should be verified in
@@ -34,5 +32,5 @@ type VerifyParameters struct {
 // Executor is an interface that defines methods to validate an artifact
 type Executor interface {
 	// ValidateArtifact returns the result of verifying an artifact
-	ValidateArtifact(ctx context.Context, verifyParameters VerifyParameters) (policyenforcer.ValidationResult, error)
+	ValidateArtifact(ctx context.Context, opts ValidateArtifactOptions) (ValidationResult, error)
 }
