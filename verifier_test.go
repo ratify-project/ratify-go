@@ -53,7 +53,7 @@ func TestRegisterVerifier_DuplicateFactory_Panic(t *testing.T) {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		RegisteredVerifiers = make(map[string]func(config VerifierConfig) (Verifier, error))
+		registeredVerifiers = make(map[string]func(config VerifierConfig) (Verifier, error))
 	}()
 	RegisterVerifier(test, createVerifier)
 	RegisterVerifier(test, createVerifier)
@@ -62,7 +62,7 @@ func TestRegisterVerifier_DuplicateFactory_Panic(t *testing.T) {
 func TestCreateVerifier(t *testing.T) {
 	RegisterVerifier(test, createVerifier)
 	defer func() {
-		RegisteredVerifiers = make(map[string]func(config VerifierConfig) (Verifier, error))
+		registeredVerifiers = make(map[string]func(config VerifierConfig) (Verifier, error))
 	}()
 
 	tests := []struct {
