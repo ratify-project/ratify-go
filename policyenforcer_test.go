@@ -17,7 +17,7 @@ package ratify
 
 import "testing"
 
-func createPolicyEnforcer(config PolicyEnforcerConfig) (PolicyEnforcer, error) {
+func createPolicyEnforcer(config CreatePolicyEnforcerOption) (PolicyEnforcer, error) {
 	return nil, nil
 }
 
@@ -35,7 +35,7 @@ func TestRegisterPolicyEnforcer_DuplicateFactory_Panic(t *testing.T) {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		RegisteredPolicyEnforcers = make(map[string]func(config PolicyEnforcerConfig) (PolicyEnforcer, error))
+		registeredPolicyEnforcers = make(map[string]func(config CreatePolicyEnforcerOption) (PolicyEnforcer, error))
 	}()
 	RegisterPolicyEnforcer(test, createPolicyEnforcer)
 	RegisterPolicyEnforcer(test, createPolicyEnforcer)
@@ -44,22 +44,22 @@ func TestRegisterPolicyEnforcer_DuplicateFactory_Panic(t *testing.T) {
 func TestCreatePolicyEnforcer(t *testing.T) {
 	RegisterPolicyEnforcer(test, createPolicyEnforcer)
 	defer func() {
-		RegisteredPolicyEnforcers = make(map[string]func(config PolicyEnforcerConfig) (PolicyEnforcer, error))
+		registeredPolicyEnforcers = make(map[string]func(config CreatePolicyEnforcerOption) (PolicyEnforcer, error))
 	}()
 
 	tests := []struct {
 		name        string
-		config      PolicyEnforcerConfig
+		config      CreatePolicyEnforcerOption
 		expectedErr bool
 	}{
 		{
 			name:        "no type provided",
-			config:      PolicyEnforcerConfig{},
+			config:      CreatePolicyEnforcerOption{},
 			expectedErr: true,
 		},
 		{
 			name: "non-registered type",
-			config: PolicyEnforcerConfig{
+			config: CreatePolicyEnforcerOption{
 				Name: test,
 				Type: "non-registered",
 			},
@@ -67,7 +67,7 @@ func TestCreatePolicyEnforcer(t *testing.T) {
 		},
 		{
 			name: "registered type",
-			config: PolicyEnforcerConfig{
+			config: CreatePolicyEnforcerOption{
 				Name: test,
 				Type: test,
 			},

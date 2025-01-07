@@ -20,73 +20,70 @@ import (
 	"fmt"
 
 	"github.com/opencontainers/go-digest"
-	oci "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/ratify-project/ratify-go/internal/common"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/v2/registry"
 )
 
-// RegisteredStores saves the registered store factories.
-var RegisteredStores = make(map[string]func(config StoreConfig) (ReferrerStore, error))
+// registeredStores saves the registered store factories.
+var registeredStores map[string]func(config CreateStorOptions) (Store, error)
 
-// ListReferrersResult represents a paginated result of ListReferrers API.
-type ListReferrersResult struct {
-	// Referrers is the list of referrers in the current page.
-	Referrers []oci.Descriptor
-	// NextToken is the token to get the next page of results.
-	NextToken string
-}
-
-// ReferrerStore is an interface that defines methods to query the graph of supply chain content including its related content
-type ReferrerStore interface {
+// Store is an interface that defines methods to query the graph of supply chain content including its related content
+type Store interface {
 	// Name is the name of the store
 	Name() string
 
 	// ListReferrers returns the immediate set of supply chain artifacts for the given subject
 	// represented as artifact manifests.
-	// Note: This API supports pagination. The nextToken is used to get the next page of results.
-	// The nextToken is supposed to be empty if there are no more results.
-	ListReferrers(ctx context.Context, subjectReference common.Reference, artifactTypes []string, nextToken string) (ListReferrersResult, error)
+	// Note: This API supports pagination. fn should be set to handle the underlying pagination.
+	ListReferrers(ctx context.Context, subjectReference registry.Reference, subjectDescriptor ocispec.Descriptor, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) ([]ocispec.Descriptor, error)
 
-	// GetBlobContent returns the blob with the given digest.
+	// GetBlobContent returns the blob with the given digest and its subject.
 	// WARNING: This API is intended to use for small objects like signatures, SBoMs.
-	GetBlobContent(ctx context.Context, subjectReference common.Reference, digest digest.Digest) ([]byte, error)
+	GetBlobContent(ctx context.Context, subjectReference string, digest digest.Digest) ([]byte, error)
 
-	// GetReferenceManifest returns the reference artifact manifest as given by the descriptor.
-	GetReferenceManifest(ctx context.Context, subjectReference common.Reference, referenceDesc oci.Descriptor) (oci.Manifest, error)
+	// GetReferenceManifest returns the referenced artifact manifest as given by the descriptor and its subject.
+	GetReferenceManifest(ctx context.Context, subjectReference string, referenceDesc ocispec.Descriptor) (ocispec.Manifest, error)
 
 	// GetSubjectDescriptor returns the descriptor for the given subject.
-	GetSubjectDescriptor(ctx context.Context, subjectReference common.Reference) (oci.Descriptor, error)
+	GetSubjectDescriptor(ctx context.Context, subjectReference string) (ocispec.Descriptor, error)
 }
 
-// StoreConfig represents the configuration of a store.
-type StoreConfig struct {
-	// Name is unique identifier of the store. Required.
-	Name string `json:"name"`
-	// Type of the store. Required.
+// CreateStorOptions represents the options to create a store.
+type CreateStorOptions struct {
+	// Name is unique identifier of a store instance. Required.
+	Name string
+	// Type represents a specific implementation of stores. Required.
 	// Note: there could be multiple stores of the same type with different names.
-	Type string `json:"type"`
+	Type string
 	// Parameters of the store. Optional.
-	Parameters map[string]interface{} `json:"parameters,omitempty"`
+	Parameters any
 }
 
 // RegisterStore registers a store factory to the system.
-func RegisterStore(name string, factory func(config StoreConfig) (ReferrerStore, error)) {
+func RegisterStore(storeType string, factory func(config CreateStorOptions) (Store, error)) {
+	if storeType == "" {
+		panic("store type cannot be empty")
+	}
 	if factory == nil {
 		panic("store factory cannot be nil")
 	}
-	if _, registered := RegisteredStores[name]; registered {
-		panic(fmt.Sprintf("store factory named %s already registered", name))
+	if registeredStores == nil {
+		registeredStores = make(map[string]func(config CreateStorOptions) (Store, error))
 	}
-	RegisteredStores[name] = factory
+	if _, registered := registeredStores[storeType]; registered {
+		panic(fmt.Sprintf("store factory type %s already registered", storeType))
+	}
+	registeredStores[storeType] = factory
 }
 
 // CreateStore creates a store instance if it belongs to a registered type.
-func CreateStore(config StoreConfig) (ReferrerStore, error) {
-	if config.Name == "" || config.Type == "" {
+func CreateStore(opts CreateStorOptions) (Store, error) {
+	if opts.Name == "" || opts.Type == "" {
 		return nil, fmt.Errorf("name or type is not provided in the store config")
 	}
-	storeFactory, ok := RegisteredStores[config.Type]
+	storeFactory, ok := registeredStores[opts.Type]
 	if ok {
-		return storeFactory(config)
+		return storeFactory(opts)
 	}
-	return nil, fmt.Errorf("store factory of type %s is not registered", config.Type)
+	return nil, fmt.Errorf("store factory of type %s is not registered", opts.Type)
 }

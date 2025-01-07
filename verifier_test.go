@@ -17,8 +17,6 @@ package ratify
 
 import (
 	"testing"
-
-	"github.com/ratify-project/ratify-go/errors"
 )
 
 const (
@@ -35,7 +33,7 @@ var (
 	testNestedErr = errors.ErrorCodeUnknown.WithError(testErr).WithDetail(testMsg3)
 )
 
-func createVerifier(config VerifierConfig) (Verifier, error) {
+func createVerifier(config CreateVerifierOptions) (Verifier, error) {
 	return nil, nil
 }
 
@@ -53,7 +51,7 @@ func TestRegisterVerifier_DuplicateFactory_Panic(t *testing.T) {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		registeredVerifiers = make(map[string]func(config VerifierConfig) (Verifier, error))
+		registeredVerifiers = make(map[string]func(config CreateVerifierOptions) (Verifier, error))
 	}()
 	RegisterVerifier(test, createVerifier)
 	RegisterVerifier(test, createVerifier)
@@ -62,22 +60,22 @@ func TestRegisterVerifier_DuplicateFactory_Panic(t *testing.T) {
 func TestCreateVerifier(t *testing.T) {
 	RegisterVerifier(test, createVerifier)
 	defer func() {
-		registeredVerifiers = make(map[string]func(config VerifierConfig) (Verifier, error))
+		registeredVerifiers = make(map[string]func(config CreateVerifierOptions) (Verifier, error))
 	}()
 
 	tests := []struct {
 		name        string
-		config      VerifierConfig
+		config      CreateVerifierOptions
 		expectedErr bool
 	}{
 		{
 			name:        "no type provided",
-			config:      VerifierConfig{},
+			config:      CreateVerifierOptions{},
 			expectedErr: true,
 		},
 		{
 			name: "non-registered type",
-			config: VerifierConfig{
+			config: CreateVerifierOptions{
 				Name: test,
 				Type: "non-registered",
 			},
@@ -85,7 +83,7 @@ func TestCreateVerifier(t *testing.T) {
 		},
 		{
 			name: "registered type",
-			config: VerifierConfig{
+			config: CreateVerifierOptions{
 				Name: test,
 				Type: test,
 			},

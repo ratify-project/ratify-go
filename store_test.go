@@ -17,7 +17,7 @@ package ratify
 
 import "testing"
 
-func createStore(config StoreConfig) (ReferrerStore, error) {
+func createStore(config CreateStorOptions) (Store, error) {
 	return nil, nil
 }
 
@@ -35,7 +35,7 @@ func TestRegisterStore_DuplicateFactory_Panic(t *testing.T) {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		RegisteredStores = make(map[string]func(config StoreConfig) (ReferrerStore, error))
+		registeredStores = make(map[string]func(config CreateStorOptions) (Store, error))
 	}()
 	RegisterStore(test, createStore)
 	RegisterStore(test, createStore)
@@ -44,22 +44,22 @@ func TestRegisterStore_DuplicateFactory_Panic(t *testing.T) {
 func TestCreateStore(t *testing.T) {
 	RegisterStore(test, createStore)
 	defer func() {
-		RegisteredStores = make(map[string]func(config StoreConfig) (ReferrerStore, error))
+		registeredStores = make(map[string]func(config CreateStorOptions) (Store, error))
 	}()
 
 	tests := []struct {
 		name        string
-		config      StoreConfig
+		config      CreateStorOptions
 		expectedErr bool
 	}{
 		{
 			name:        "no type provided",
-			config:      StoreConfig{},
+			config:      CreateStorOptions{},
 			expectedErr: true,
 		},
 		{
 			name: "non-registered type",
-			config: StoreConfig{
+			config: CreateStorOptions{
 				Name: test,
 				Type: "non-registered",
 			},
@@ -67,7 +67,7 @@ func TestCreateStore(t *testing.T) {
 		},
 		{
 			name: "registered type",
-			config: StoreConfig{
+			config: CreateStorOptions{
 				Name: test,
 				Type: test,
 			},

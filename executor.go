@@ -17,20 +17,37 @@ package ratify
 
 import (
 	"context"
+	"errors"
 )
 
 // ValidateArtifactOptions describes the artifact validation options.
 type ValidateArtifactOptions struct {
 	// SubjectArtifact is the artifact to be validated. Required.
-	SubjectArtifact string `json:"subjectArtifact"`
+	SubjectArtifact string
 	// ReferenceTypes is a list of reference types that should be verified in
 	// associated artifacts. Empty list means all artifacts should be verified.
 	// Optional.
-	ReferenceTypes []string `json:"referenceTypes,omitempty"`
+	ReferenceTypes []string
 }
 
-// Executor is an interface that defines methods to validate an artifact
-type Executor interface {
-	// ValidateArtifact returns the result of verifying an artifact
-	ValidateArtifact(ctx context.Context, opts ValidateArtifactOptions) (ValidationResult, error)
+// ValidationResult aggregates verifier reports and the final verification
+// result evaluated by the policy enforcer.
+type ValidationResult struct {
+	// Succeeded represents the outcome determined by the policy enforcer based on
+	// the aggregated verifier reports. And if an error occurs during
+	// the validation process prior to policy evaluation, it will be set to `false`.
+	// When passthrough mode is enabled, the policy enforcer does not evaluate
+	// the result and sets this field to `false`. In such cases, this field should be ignored.
+	// Required.
+	Succeeded bool
+	// ArtifactReports is aggregated reports of verifying associated artifacts. Required.
+	ArtifactReports []*ReferrerValidationReport
+}
+
+// Executor is defined to validate artifacts.
+type Executor struct{}
+
+// ValidateArtifact returns the result of verifying an artifact
+func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOptions) (*ValidationResult, error) {
+	return nil, errors.New("not implemented")
 }
