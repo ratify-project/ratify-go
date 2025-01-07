@@ -19,13 +19,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"oras.land/oras-go/v2/registry"
 )
 
 // registeredStores saves the registered store factories.
-var registeredStores map[string]func(config CreateStorOptions) (Store, error)
+var registeredStores map[string]func(CreateStoreOptions) (Store, error)
 
 // Store is an interface that defines methods to query the graph of supply chain content including its related content
 type Store interface {
@@ -35,21 +33,21 @@ type Store interface {
 	// ListReferrers returns the immediate set of supply chain artifacts for the given subject
 	// represented as artifact manifests.
 	// Note: This API supports pagination. fn should be set to handle the underlying pagination.
-	ListReferrers(ctx context.Context, subjectReference registry.Reference, subjectDescriptor ocispec.Descriptor, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) ([]ocispec.Descriptor, error)
+	ListReferrers(ctx context.Context, subjectReference string, subjectDescriptor ocispec.Descriptor, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) ([]ocispec.Descriptor, error)
 
-	// GetBlobContent returns the blob with the given digest and its subject.
+	// FetchBlobContent returns the blob by the given reference.
 	// WARNING: This API is intended to use for small objects like signatures, SBoMs.
-	GetBlobContent(ctx context.Context, subjectReference string, digest digest.Digest) ([]byte, error)
+	FetchBlobContent(ctx context.Context, reference string) ([]byte, error)
 
-	// GetReferenceManifest returns the referenced artifact manifest as given by the descriptor and its subject.
-	GetReferenceManifest(ctx context.Context, subjectReference string, referenceDesc ocispec.Descriptor) (ocispec.Manifest, error)
+	// FetchManifest returns the referenced artifact manifest as given by the descriptor.
+	FetchManifest(ctx context.Context, reference string, expected ocispec.Descriptor) (ocispec.Manifest, error)
 
-	// GetSubjectDescriptor returns the descriptor for the given subject.
-	GetSubjectDescriptor(ctx context.Context, subjectReference string) (ocispec.Descriptor, error)
+	// Resolve resolves to a descriptor for the given artifact reference.
+	Resolve(ctx context.Context, reference string) (ocispec.Descriptor, error)
 }
 
-// CreateStorOptions represents the options to create a store.
-type CreateStorOptions struct {
+// CreateStoreOptions represents the options to create a store.
+type CreateStoreOptions struct {
 	// Name is unique identifier of a store instance. Required.
 	Name string
 	// Type represents a specific implementation of stores. Required.
@@ -60,30 +58,30 @@ type CreateStorOptions struct {
 }
 
 // RegisterStore registers a store factory to the system.
-func RegisterStore(storeType string, factory func(config CreateStorOptions) (Store, error)) {
+func RegisterStore(storeType string, create func(CreateStoreOptions) (Store, error)) {
 	if storeType == "" {
 		panic("store type cannot be empty")
 	}
-	if factory == nil {
+	if create == nil {
 		panic("store factory cannot be nil")
 	}
 	if registeredStores == nil {
-		registeredStores = make(map[string]func(config CreateStorOptions) (Store, error))
+		registeredStores = make(map[string]func(CreateStoreOptions) (Store, error))
 	}
 	if _, registered := registeredStores[storeType]; registered {
 		panic(fmt.Sprintf("store factory type %s already registered", storeType))
 	}
-	registeredStores[storeType] = factory
+	registeredStores[storeType] = create
 }
 
 // CreateStore creates a store instance if it belongs to a registered type.
-func CreateStore(opts CreateStorOptions) (Store, error) {
+func CreateStore(opts CreateStoreOptions) (Store, error) {
 	if opts.Name == "" || opts.Type == "" {
-		return nil, fmt.Errorf("name or type is not provided in the store config")
+		return nil, fmt.Errorf("name or type is not provided in the store options")
 	}
 	storeFactory, ok := registeredStores[opts.Type]
-	if ok {
-		return storeFactory(opts)
+	if !ok {
+		return nil, fmt.Errorf("store factory of type %s is not registered", opts.Type)
 	}
-	return nil, fmt.Errorf("store factory of type %s is not registered", opts.Type)
+	return storeFactory(opts)
 }

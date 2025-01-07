@@ -15,26 +15,21 @@ limitations under the License.
 
 package ratify
 
-import (
-	"testing"
-)
+import "testing"
 
-const (
-	testName = "testName"
-	testType = "testType"
-	testMsg  = "testMsg"
-	testMsg2 = "testMsg2"
-	testMsg3 = "testMsg3"
-	test     = "test"
-)
+const test = "test"
 
-var (
-	testErr       = errors.ErrorCodeUnknown.WithDetail(testMsg2)
-	testNestedErr = errors.ErrorCodeUnknown.WithError(testErr).WithDetail(testMsg3)
-)
-
-func createVerifier(config CreateVerifierOptions) (Verifier, error) {
+func createVerifier(_ CreateVerifierOptions) (Verifier, error) {
 	return nil, nil
+}
+
+func TestRegisterVerifier_EmptyType_Panic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected to panic")
+		}
+	}()
+	RegisterVerifier("", createVerifier)
 }
 
 func TestRegisterVerifier_NilFactory_Panic(t *testing.T) {
@@ -51,7 +46,7 @@ func TestRegisterVerifier_DuplicateFactory_Panic(t *testing.T) {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		registeredVerifiers = make(map[string]func(config CreateVerifierOptions) (Verifier, error))
+		registeredVerifiers = make(map[string]func(CreateVerifierOptions) (Verifier, error))
 	}()
 	RegisterVerifier(test, createVerifier)
 	RegisterVerifier(test, createVerifier)
@@ -60,22 +55,22 @@ func TestRegisterVerifier_DuplicateFactory_Panic(t *testing.T) {
 func TestCreateVerifier(t *testing.T) {
 	RegisterVerifier(test, createVerifier)
 	defer func() {
-		registeredVerifiers = make(map[string]func(config CreateVerifierOptions) (Verifier, error))
+		registeredVerifiers = make(map[string]func(CreateVerifierOptions) (Verifier, error))
 	}()
 
 	tests := []struct {
 		name        string
-		config      CreateVerifierOptions
+		opts        CreateVerifierOptions
 		expectedErr bool
 	}{
 		{
 			name:        "no type provided",
-			config:      CreateVerifierOptions{},
+			opts:        CreateVerifierOptions{},
 			expectedErr: true,
 		},
 		{
 			name: "non-registered type",
-			config: CreateVerifierOptions{
+			opts: CreateVerifierOptions{
 				Name: test,
 				Type: "non-registered",
 			},
@@ -83,7 +78,7 @@ func TestCreateVerifier(t *testing.T) {
 		},
 		{
 			name: "registered type",
-			config: CreateVerifierOptions{
+			opts: CreateVerifierOptions{
 				Name: test,
 				Type: test,
 			},
@@ -93,81 +88,9 @@ func TestCreateVerifier(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := CreateVerifier(test.config)
+			_, err := CreateVerifier(test.opts)
 			if test.expectedErr != (err != nil) {
 				t.Errorf("Expected error: %v, got: %v", test.expectedErr, err)
-			}
-		})
-	}
-}
-
-func TestNewVerifierResult(t *testing.T) {
-	tests := []struct {
-		name                string
-		verifierName        string
-		verifierType        string
-		message             string
-		isSuccess           bool
-		err                 *errors.Error
-		expectedMessage     string
-		expectedRemediation string
-		expectedErrorReason string
-	}{
-		{
-			name:                "nil error",
-			verifierName:        testName,
-			verifierType:        testType,
-			message:             testMsg,
-			isSuccess:           true,
-			err:                 nil,
-			expectedMessage:     testMsg,
-			expectedRemediation: "",
-			expectedErrorReason: "",
-		},
-		{
-			name:                "error with detail",
-			verifierName:        testName,
-			verifierType:        testType,
-			message:             testMsg,
-			isSuccess:           true,
-			err:                 &testErr,
-			expectedMessage:     testMsg,
-			expectedRemediation: "",
-			expectedErrorReason: testMsg2,
-		},
-		{
-			name:                "nested error",
-			verifierName:        testName,
-			verifierType:        testType,
-			message:             testMsg,
-			isSuccess:           true,
-			err:                 &testNestedErr,
-			expectedMessage:     testMsg3,
-			expectedRemediation: "",
-			expectedErrorReason: testMsg2,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := NewVerifierResult(tt.verifierName, tt.verifierType, tt.message, tt.isSuccess, tt.err, nil)
-			if result.Message != tt.expectedMessage {
-				t.Errorf("Expected message to be %s, got %s", tt.expectedMessage, result.Message)
-			}
-			if result.Remediation != tt.expectedRemediation {
-				t.Errorf("Expected remediation to be %s, got %s", tt.expectedRemediation, result.Remediation)
-			}
-			if result.ErrorReason != tt.expectedErrorReason {
-				t.Errorf("Expected error reason to be %s, got %s", tt.expectedErrorReason, result.ErrorReason)
-			}
-			if result.VerifierName != tt.verifierName {
-				t.Errorf("Expected verifier name to be %s, got %s", tt.verifierName, result.VerifierName)
-			}
-			if result.VerifierType != tt.verifierType {
-				t.Errorf("Expected verifier type to be %s, got %s", tt.verifierType, result.VerifierType)
-			}
-			if result.IsSuccess != tt.isSuccess {
-				t.Errorf("Expected isSuccess to be %t, got %t", tt.isSuccess, result.IsSuccess)
 			}
 		})
 	}

@@ -41,7 +41,7 @@ type ValidationResult struct {
 	// Required.
 	Succeeded bool
 	// ArtifactReports is aggregated reports of verifying associated artifacts. Required.
-	ArtifactReports []*ReferrerValidationReport
+	ArtifactReports []*ValidationReport
 }
 
 // Executor is defined to validate artifacts.

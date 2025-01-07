@@ -23,13 +23,13 @@ import (
 )
 
 // registeredPolicyEnforcers saves the registered policy enforcer factories.
-var registeredPolicyEnforcers map[string]func(config CreatePolicyEnforcerOption) (PolicyEnforcer, error)
+var registeredPolicyEnforcers map[string]func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error)
 
-// ReferrerValidationReport describes the results of verifying an associated artifact
+// ValidationReport describes the results of verifying an associated artifact
 // and its nested artifacts by available verifiers.
-type ReferrerValidationReport struct {
-	// Subject is the subject artifact of the current referrer being verified. Required.
-	Subject string
+type ValidationReport struct {
+	// Target is the subject artifact of the current referrer being verified. Required.
+	Target string
 
 	// Descriptor is the descriptor of the referrer artifact being verified. Required.
 	Descriptor ocispec.Descriptor
@@ -38,18 +38,18 @@ type ReferrerValidationReport struct {
 	VerifierReports []*VerifierResult
 
 	// ReferrerReports is reports of verifying referrer artifacts of current referrer. Required.
-	ReferrerReports []*ReferrerValidationReport
+	ReferrerReports []*ValidationReport
 }
 
 // PolicyEnforcer is an interface with methods that make policy decisions.
 type PolicyEnforcer interface {
-	// EvaluateValidationReports determines the final outcome of validation that
+	// Evaluate determines the final outcome of validation that
 	// is constructed using the results from individual verifications.
-	EvaluateValidationReports(ctx context.Context, validationReports []*ReferrerValidationReport) bool
+	Evaluate(ctx context.Context, validationReports []*ValidationReport) bool
 }
 
-// CreatePolicyEnforcerOption represents the options to create a policy enforcer plugin.
-type CreatePolicyEnforcerOption struct {
+// CreatePolicyEnforcerOptions represents the options to create a policy enforcer plugin.
+type CreatePolicyEnforcerOptions struct {
 	// Name is unique identifier of a policy enforcer instance. Required.
 	Name string
 	// Type represents a specific implementation of policy enforcer. Required.
@@ -60,30 +60,31 @@ type CreatePolicyEnforcerOption struct {
 }
 
 // RegisterPolicyEnforcer registers a policy enforcer factory to the system.
-func RegisterPolicyEnforcer(policyEnforcerType string, factory func(opts CreatePolicyEnforcerOption) (PolicyEnforcer, error)) {
+func RegisterPolicyEnforcer(policyEnforcerType string, create func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error)) {
 	if policyEnforcerType == "" {
 		panic("policy enforcer type cannot be empty")
 	}
-	if factory == nil {
+	if create == nil {
 		panic("policy enforcer factory cannot be nil")
 	}
 	if registeredPolicyEnforcers == nil {
-		registeredPolicyEnforcers = make(map[string]func(opts CreatePolicyEnforcerOption) (PolicyEnforcer, error))
+		registeredPolicyEnforcers = make(map[string]func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error))
 	}
 	if _, registered := registeredPolicyEnforcers[policyEnforcerType]; registered {
 		panic(fmt.Sprintf("policy enforcer factory type %s already registered", policyEnforcerType))
 	}
-	registeredPolicyEnforcers[policyEnforcerType] = factory
+	registeredPolicyEnforcers[policyEnforcerType] = create
 }
 
 // CreatePolicyEnforcer creates a policy enforcer instance if it belongs to a registered type.
-func CreatePolicyEnforcer(opts CreatePolicyEnforcerOption) (PolicyEnforcer, error) {
+func CreatePolicyEnforcer(opts CreatePolicyEnforcerOptions) (PolicyEnforcer, error) {
 	if opts.Name == "" || opts.Type == "" {
-		return nil, fmt.Errorf("name or type is not provided in the policy enforcer config")
+		return nil, fmt.Errorf("name or type is not provided in the policy enforcer options")
 	}
 	policyEnforcerFactory, ok := registeredPolicyEnforcers[opts.Type]
-	if ok {
-		return policyEnforcerFactory(opts)
+	if !ok {
+		return nil, fmt.Errorf("policy enforcer factory of type %s is not registered", opts.Type)
+
 	}
-	return nil, fmt.Errorf("policy enforcer factory of type %s is not registered", opts.Type)
+	return policyEnforcerFactory(opts)
 }

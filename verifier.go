@@ -20,11 +20,10 @@ import (
 	"fmt"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"oras.land/oras-go/v2/registry"
 )
 
 // registeredVerifiers saves the registered verifier factories.
-var registeredVerifiers map[string]func(config CreateVerifierOptions) (Verifier, error)
+var registeredVerifiers map[string]func(CreateVerifierOptions) (Verifier, error)
 
 // Verifier is an interface that defines methods to verify an artifact associated
 // with a subject.
@@ -38,9 +37,10 @@ type Verifier interface {
 	// Verifiable returns if the verifier can verify the given reference.
 	Verifiable(ctx context.Context, referrerDescriptor ocispec.Descriptor) bool
 
-	// Verify verifies the given reference of a subject and returns the verification result
+	// Verify verifies the artifact associated with the target reference and
+	// returns the verification result.
 	Verify(ctx context.Context,
-		subjectReference registry.Reference,
+		subjectReference string,
 		referrerDescriptor ocispec.Descriptor,
 		referrerStore Store) (VerifierResult, error)
 }
@@ -75,31 +75,31 @@ type CreateVerifierOptions struct {
 	Parameters any
 }
 
-// CreateVerifier creates a verifier instance if it belongs to a registered type.
-func CreateVerifier(opts CreateVerifierOptions) (Verifier, error) {
-	if opts.Name == "" || opts.Type == "" {
-		return nil, fmt.Errorf("name or type is not provided in the verifier config")
-	}
-	verifierFactory, ok := registeredVerifiers[opts.Type]
-	if ok {
-		return verifierFactory(opts)
-	}
-	return nil, fmt.Errorf("verifier factory of type %s is not registered", opts.Type)
-}
-
 // RegisterVerifier registers a verifier factory to the system.
-func RegisterVerifier(verifierType string, factory func(config CreateVerifierOptions) (Verifier, error)) {
+func RegisterVerifier(verifierType string, create func(CreateVerifierOptions) (Verifier, error)) {
 	if verifierType == "" {
 		panic("verifier type cannot be empty")
 	}
-	if factory == nil {
+	if create == nil {
 		panic("verifier factory cannot be nil")
 	}
 	if registeredVerifiers == nil {
-		registeredVerifiers = make(map[string]func(config CreateVerifierOptions) (Verifier, error))
+		registeredVerifiers = make(map[string]func(CreateVerifierOptions) (Verifier, error))
 	}
 	if _, registered := registeredVerifiers[verifierType]; registered {
 		panic(fmt.Sprintf("verifier factory named %s already registered", verifierType))
 	}
-	registeredVerifiers[verifierType] = factory
+	registeredVerifiers[verifierType] = create
+}
+
+// CreateVerifier creates a verifier instance if it belongs to a registered type.
+func CreateVerifier(opts CreateVerifierOptions) (Verifier, error) {
+	if opts.Name == "" || opts.Type == "" {
+		return nil, fmt.Errorf("name or type is not provided in the verifier options")
+	}
+	verifierFactory, ok := registeredVerifiers[opts.Type]
+	if !ok {
+		return nil, fmt.Errorf("verifier factory of type %s is not registered", opts.Type)
+	}
+	return verifierFactory(opts)
 }
