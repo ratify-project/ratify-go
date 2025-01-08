@@ -25,34 +25,41 @@ import (
 // registeredStores saves the registered store factories.
 var registeredStores map[string]func(CreateStoreOptions) (Store, error)
 
-// Store is an interface that defines methods to query the graph of supply chain content including its related content
+// Store is an interface that defines methods to query the graph of supply chain
+// content including its related content
 type Store interface {
-	// Name is the name of the store
+	// Name is the name of the store.
 	Name() string
 
-	// ListReferrers returns the immediate set of supply chain artifacts for the given subject
-	// represented as artifact manifests.
-	// Note: This API supports pagination. fn should be set to handle the underlying pagination.
-	ListReferrers(ctx context.Context, subjectReference string, subjectDescriptor ocispec.Descriptor, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) ([]ocispec.Descriptor, error)
+	// Resolve resolves to a descriptor for the given artifact reference.
+	Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error)
+
+	// ListReferrers returns the immediate set of supply chain artifacts for the
+	// given subject reference.
+	// Note: This API supports pagination. fn should be set to handle the
+	//       underlying pagination.
+	ListReferrers(ctx context.Context, ref string, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) ([]ocispec.Descriptor, error)
 
 	// FetchBlobContent returns the blob by the given reference.
-	// WARNING: This API is intended to use for small objects like signatures, SBoMs.
-	FetchBlobContent(ctx context.Context, reference string) ([]byte, error)
+	// WARNING: This API is intended to use for small objects like signatures,
+	//          SBoMs.
+	FetchBlobContent(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error)
 
-	// FetchManifest returns the referenced artifact manifest as given by the descriptor.
-	FetchManifest(ctx context.Context, reference string, expected ocispec.Descriptor) (ocispec.Manifest, error)
-
-	// Resolve resolves to a descriptor for the given artifact reference.
-	Resolve(ctx context.Context, reference string) (ocispec.Descriptor, error)
+	// FetchImageManifest returns the referenced image manifest as given by the
+	// descriptor.
+	FetchImageManifest(ctx context.Context, repo string, desc ocispec.Descriptor) (*ocispec.Manifest, error)
 }
 
 // CreateStoreOptions represents the options to create a store.
 type CreateStoreOptions struct {
 	// Name is unique identifier of a store instance. Required.
 	Name string
+
 	// Type represents a specific implementation of stores. Required.
-	// Note: there could be multiple stores of the same type with different names.
+	// Note: there could be multiple stores of the same type with different 
+	//       names.
 	Type string
+
 	// Parameters of the store. Optional.
 	Parameters any
 }

@@ -25,8 +25,8 @@ import (
 // registeredVerifiers saves the registered verifier factories.
 var registeredVerifiers map[string]func(CreateVerifierOptions) (Verifier, error)
 
-// Verifier is an interface that defines methods to verify an artifact associated
-// with a subject.
+// Verifier is an interface that defines methods to verify an artifact
+// associated with a subject.
 type Verifier interface {
 	// Name returns the name of the verifier.
 	Name() string
@@ -34,43 +34,42 @@ type Verifier interface {
 	// Type returns the type name of the verifier.
 	Type() string
 
-	// Verifiable returns if the verifier can verify the given reference.
-	Verifiable(ctx context.Context, referrerDescriptor ocispec.Descriptor) bool
+	// Verifiable returns if the verifier can verify against the given artifact.
+	Verifiable(artifact ocispec.Descriptor) bool
 
-	// Verify verifies the artifact associated with the target reference and
+	// Verify verifies the subject in the store against the artifact and
 	// returns the verification result.
-	Verify(ctx context.Context,
-		subjectReference string,
-		referrerDescriptor ocispec.Descriptor,
-		referrerStore Store) (VerifierResult, error)
+	Verify(ctx context.Context, store Store, subject string, artifact ocispec.Descriptor) (*VerificationResult, error)
 }
 
-// VerifierResult defines the verification result that a verifier plugin must return.
-type VerifierResult struct {
+// VerificationResult defines the verification result that a verifier plugin
+// must return.
+type VerificationResult struct {
 	// Err is the error that occurred when the verification failed.
-	// If the verification is successful, this field should be nil. Optional
+	// If the verification is successful, this field should be nil. Optional.
 	Err error
 
-	// Description describes the verification result if needed. Optional
+	// Description describes the verification result if needed. Optional.
 	Description string
 
 	// Verifier refers to the verifier that generated the result. Required.
 	Verifier Verifier
 
-	// Extensions is additional information that can be used to provide more
-	// context about the verification result. Optional.
-	Extensions any
+	// Detail is additional information that can be used to provide more context
+	// about the verification result. Optional.
+	Detail any
 }
 
 // CreateVerifierOptions represents the options to create a verifier.
 type CreateVerifierOptions struct {
 	// Name is the unique identifier of a verifier instantce. Required.
 	Name string
-	// Type represents a specific implementation of a verifier. Required
-	// Note: there could be multiple verifiers of the same type with different names.
+
+	// Type represents a specific implementation of a verifier. Required.
+	// Note: there could be multiple verifiers of the same type with different
+	//       names.
 	Type string
-	// ArtifactTypes is the list of artifact types that the verifier can verify. Required.
-	ArtifactTypes []string
+
 	// Parameters is additional parameters of the verifier. Optional.
 	Parameters any
 }

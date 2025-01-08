@@ -25,36 +25,43 @@ import (
 // registeredPolicyEnforcers saves the registered policy enforcer factories.
 var registeredPolicyEnforcers map[string]func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error)
 
-// ValidationReport describes the results of verifying an associated artifact
-// and its nested artifacts by available verifiers.
+// ValidationReport describes the results of verifying an artifact and its
+// nested artifacts by available verifiers.
 type ValidationReport struct {
-	// Target is the subject artifact of the current referrer being verified. Required.
-	Target string
+	// Subject is the subject reference of the artifact being verified.
+	// Required.
+	Subject string
 
-	// Descriptor is the descriptor of the referrer artifact being verified. Required.
-	Descriptor ocispec.Descriptor
+	// Results is reports of verifying the subject against the referrer
+	// artifacts by matching verifiers. Required.
+	Results []*VerificationResult
 
-	// VerifierReports is reports of verifying current referrer artifact by matching verifiers. Required.
-	VerifierReports []*VerifierResult
+	// Artifact is the descriptor of the referrer artifact being verified
+	// against with. Required.
+	Artifact ocispec.Descriptor
 
-	// ReferrerReports is reports of verifying referrer artifacts of current referrer. Required.
-	ReferrerReports []*ValidationReport
+	// ArtifactReports is reports of verifying referrer artifacts. Optional.
+	ArtifactReports []*ValidationReport
 }
 
 // PolicyEnforcer is an interface with methods that make policy decisions.
 type PolicyEnforcer interface {
-	// Evaluate determines the final outcome of validation that
-	// is constructed using the results from individual verifications.
-	Evaluate(ctx context.Context, validationReports []*ValidationReport) bool
+	// Evaluate determines the final outcome of validation that is constructed 
+	// using the results from individual verifications.
+	Evaluate(ctx context.Context, artifactReports []*ValidationReport) bool
 }
 
-// CreatePolicyEnforcerOptions represents the options to create a policy enforcer plugin.
+// CreatePolicyEnforcerOptions represents the options to create a policy 
+// enforcer plugin.
 type CreatePolicyEnforcerOptions struct {
 	// Name is unique identifier of a policy enforcer instance. Required.
 	Name string
+
 	// Type represents a specific implementation of policy enforcer. Required.
-	// Note: there could be multiple policy enforcers of the same type with different names.
+	// Note: there could be multiple policy enforcers of the same type with 
+	//       different names.
 	Type string
+
 	// Parameters of the policy enforcer. Optional.
 	Parameters any
 }
@@ -76,7 +83,8 @@ func RegisterPolicyEnforcer(policyEnforcerType string, create func(CreatePolicyE
 	registeredPolicyEnforcers[policyEnforcerType] = create
 }
 
-// CreatePolicyEnforcer creates a policy enforcer instance if it belongs to a registered type.
+// CreatePolicyEnforcer creates a policy enforcer instance if it belongs to a 
+// registered type.
 func CreatePolicyEnforcer(opts CreatePolicyEnforcerOptions) (PolicyEnforcer, error) {
 	if opts.Name == "" || opts.Type == "" {
 		return nil, fmt.Errorf("name or type is not provided in the policy enforcer options")
