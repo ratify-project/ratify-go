@@ -18,6 +18,10 @@ The `ratify-go` library follows [Semantic Versioning](https://semver.org/), wher
 - [Ratify Concepts](https://ratify.dev/docs/category/concepts): Documentation of framework, executor, store, and verifier concepts.
 - [Go Reference](https://pkg.go.dev/github.com/ratify-project/ratify-go@main): Library documentation.
 
+## Contributing
+Thanks for your interest in contributing! There are many ways to contribute to this project. 
+Get started here: [CONTRIBUTING.md](./CONTRIBUTING.md)
+
 ## Code of Conduct
 
 This project has adopted the [CNCF Code of Conduct](https://github.com/cncf/foundation/blob/master/code-of-conduct.md).
