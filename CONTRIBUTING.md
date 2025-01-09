@@ -25,7 +25,7 @@ There are several ways to contribute to this project. Here are a few ideas to ge
 ## Contributing Guidelines
 1. Fork this repository and create a new branch.
 2. Develop and test your changes (run `make test`).
-3. Sign commits with your GPG key ([instructions here](https://docs.github.com/authentication/managing-commit-signature-verification/signing-commits)) or set up a [SSH key](https://docs.github.com/authentication/managing-commit-signature-verification/telling-git-about-your-signing-key#telling-git-about-your-ssh-key) for signing instead.
+3. Commit with sign off and sign with your GPG key ([instructions here](https://docs.github.com/authentication/managing-commit-signature-verification/signing-commits)) or set up a [SSH key](https://docs.github.com/authentication/managing-commit-signature-verification/telling-git-about-your-signing-key#telling-git-about-your-ssh-key) for signing instead. (run `git commit -s -S`)
 4. Open a PR, ensure the PR name follows the [Conventional Commits](https://www.conventionalcommits.org/) format, and wait for all required status checks to pass.
 5. Address any PR comments; this may take several rounds of review.
 6. Once approved, your PR will be merged by the maintainers.
