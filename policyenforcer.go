@@ -46,19 +46,19 @@ type ValidationReport struct {
 
 // PolicyEnforcer is an interface with methods that make policy decisions.
 type PolicyEnforcer interface {
-	// Evaluate determines the final outcome of validation that is constructed 
+	// Evaluate determines the final outcome of validation that is constructed
 	// using the results from individual verifications.
-	Evaluate(ctx context.Context, artifactReports []*ValidationReport) bool
+	Evaluate(ctx context.Context, artifactReports []*ValidationReport) (bool, error)
 }
 
-// CreatePolicyEnforcerOptions represents the options to create a policy 
+// CreatePolicyEnforcerOptions represents the options to create a policy
 // enforcer plugin.
 type CreatePolicyEnforcerOptions struct {
 	// Name is unique identifier of a policy enforcer instance. Required.
 	Name string
 
 	// Type represents a specific implementation of policy enforcer. Required.
-	// Note: there could be multiple policy enforcers of the same type with 
+	// Note: there could be multiple policy enforcers of the same type with
 	//       different names.
 	Type string
 
@@ -83,7 +83,7 @@ func RegisterPolicyEnforcer(policyEnforcerType string, create func(CreatePolicyE
 	registeredPolicyEnforcers[policyEnforcerType] = create
 }
 
-// CreatePolicyEnforcer creates a policy enforcer instance if it belongs to a 
+// CreatePolicyEnforcer creates a policy enforcer instance if it belongs to a
 // registered type.
 func CreatePolicyEnforcer(opts CreatePolicyEnforcerOptions) (PolicyEnforcer, error) {
 	if opts.Name == "" || opts.Type == "" {

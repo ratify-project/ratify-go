@@ -15,9 +15,6 @@ limitations under the License.
 
 package ratify
 
-import "sync"
-
-
 // task is a struct that represents a task that verifies an artifact by
 // the executor.
 type task struct {
@@ -26,44 +23,8 @@ type task struct {
 	artifact string
 
 	// subjectReport is the report of the subject artifact.
-	subjectReport *threadSafeReport
-}
+	subjectReport *ValidationReport
 
-// threadSafeReport is a struct that wraps a ValidationReport and provides
-// thread-safe access to it.
-type threadSafeReport struct {
-	report *ValidationReport
-	lock   sync.Mutex
-}
-
-func newSubjectReport(subjectReport *ValidationReport) *threadSafeReport {
-	return &threadSafeReport{
-		report: subjectReport,
-		lock:   sync.Mutex{},
-	}
-}
-
-func newTask(artifact string, subjectReport *ValidationReport) *task {
-	var report *threadSafeReport
-	if subjectReport != nil {
-		report = newSubjectReport(subjectReport)
-	}
-	return &task{
-		artifact:      artifact,
-		subjectReport: report,
-	}
-}
-
-// addArtifactReports adds artifact reports to the subject report.
-func (p *threadSafeReport) addArtifactReports(reports []*ValidationReport) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	if p.report == nil {
-		p.report = &ValidationReport{
-			ArtifactReports: make([]*ValidationReport, 0),
-		}
-	}
-
-	p.report.ArtifactReports = append(p.report.ArtifactReports, reports...)
+	// store is the store that stores the artifacts.
+	store Store
 }
