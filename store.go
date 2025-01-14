@@ -38,7 +38,7 @@ type Store interface {
 	// given subject reference.
 	// Note: This API supports pagination. fn should be set to handle the
 	//       underlying pagination.
-	ListReferrers(ctx context.Context, ref string, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) ([]ocispec.Descriptor, error)
+	ListReferrers(ctx context.Context, ref string, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) error
 
 	// FetchBlobContent returns the blob by the given reference.
 	// WARNING: This API is intended to use for small objects like signatures,

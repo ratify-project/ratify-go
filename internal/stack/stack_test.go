@@ -15,22 +15,26 @@ limitations under the License.
 
 package stack
 
-// Stack is a generic stack implementation.
-type Stack[T any] []T
+import "testing"
 
-// Push pushes keys to the stack.
-func (s *Stack[T]) Push(keys ...T) {
-	*s = append(*s, keys...)
-}
+func TestStack(t *testing.T) {
+	s := Stack[int]{}
+	if s.Len() != 0 {
+		t.Errorf("Expected stack to be empty")
+	}
 
-// Pop pops keys from the stack.
-func (s *Stack[T]) Pop() T {
-	t := (*s)[len(*s)-1]
-	*s = (*s)[:len(*s)-1]
-	return t
-}
+	s.Push(1, 2)
+	x := s.Pop()
+	if x != 2 {
+		t.Errorf("Expected key to be 2")
+	}
 
-// IsEmpty checks if the stack is empty.
-func (s *Stack[T]) Len() int {
-	return len(*s)
+	x = s.Pop()
+	if x != 1 {
+		t.Errorf("Expected key to be 1")
+	}
+
+	if s.Len() != 0 {
+		t.Errorf("Expected stack to be empty")
+	}
 }

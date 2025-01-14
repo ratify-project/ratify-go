@@ -71,24 +71,20 @@ func (m *mockVerifier) Verify(ctx context.Context, store Store, subject string, 
 
 // mockStore is a mock implementation of Store.
 type mockStore struct {
-	referrers map[string][]ocispec.Descriptor
-	tagToDesc map[string]ocispec.Descriptor
+	tagToDesc         map[string]ocispec.Descriptor
+	digestToReferrers map[string][]ocispec.Descriptor
 }
 
 func (m *mockStore) Name() string {
 	return "mock-store-name"
 }
 
-func (m *mockStore) ListReferrers(ctx context.Context, ref string, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) ([]ocispec.Descriptor, error) {
-	if m.referrers == nil {
-		return nil, errors.New("referrers not initialized")
+func (m *mockStore) ListReferrers(ctx context.Context, ref string, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) error {
+	if m.digestToReferrers == nil {
+		return errors.New("referrers not initialized")
 	}
-
-	if referrers, ok := m.referrers[ref]; ok {
-		return referrers, nil
-	}
-
-	return nil, nil
+	referrers := m.digestToReferrers[ref]
+	return fn(referrers)
 }
 
 func (m *mockStore) FetchBlobContent(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error) {
@@ -183,7 +179,9 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
-				referrers: map[string][]ocispec.Descriptor{},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {},
+				},
 			},
 			verifiers:      []Verifier{&mockVerifier{}},
 			policyEnforcer: &mockPolicyEnforcer{},
@@ -203,9 +201,9 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
-				referrers: map[string][]ocispec.Descriptor{
+				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
-						ocispec.Descriptor{
+						{
 							Digest: testDigest2,
 						},
 					},
@@ -235,9 +233,9 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
-				referrers: map[string][]ocispec.Descriptor{
+				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
-						ocispec.Descriptor{
+						{
 							Digest: testDigest2,
 						},
 					},
@@ -261,9 +259,9 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
-				referrers: map[string][]ocispec.Descriptor{
+				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
-						ocispec.Descriptor{
+						{
 							Digest: testDigest2,
 						},
 					},
@@ -303,9 +301,9 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
-				referrers: map[string][]ocispec.Descriptor{
+				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
-						ocispec.Descriptor{
+						{
 							Digest: testDigest2,
 						},
 					},
@@ -345,9 +343,9 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
-				referrers: map[string][]ocispec.Descriptor{
+				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
-						ocispec.Descriptor{
+						{
 							Digest: testDigest2,
 						},
 					},
@@ -378,22 +376,22 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
-				referrers: map[string][]ocispec.Descriptor{
+				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
-						ocispec.Descriptor{
+						{
 							Digest: testDigest2,
 						},
-						ocispec.Descriptor{
+						{
 							Digest: testDigest3,
 						},
 					},
 					testArtifact2: {
-						ocispec.Descriptor{
+						{
 							Digest: testDigest4,
 						},
 					},
 					testArtifact4: {
-						ocispec.Descriptor{
+						{
 							Digest: testDigest5,
 						},
 					},
@@ -458,7 +456,7 @@ func TestValidateArtifact(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			executor, _ := NewExecutor(tt.verifiers, tt.store, tt.policyEnforcer)
+			executor, _ := NewExecutor(tt.store, tt.verifiers, tt.policyEnforcer)
 			got, err := executor.ValidateArtifact(context.Background(), tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateArtifact() error = %v, wantErr %v", err, tt.wantErr)
@@ -536,4 +534,41 @@ func sameArtifactValidationReport(report1, report2 *ValidationReport) bool {
 
 func sameVerifierReport(report1, report2 *VerificationResult) bool {
 	return report1.Err == report2.Err && report1.Description == report2.Description
+}
+
+func TestValidateExecutorSetup(t *testing.T) {
+	tests := []struct {
+		name    string
+		store   Store
+		verifiers []Verifier
+		wantErr bool
+	}{
+		{
+			name:    "Store is not set",
+			store:   nil,
+			verifiers: []Verifier{&mockVerifier{}},
+			wantErr: true,
+		},
+		{
+			name:    "Verifiers are not set",
+			store:   &mockStore{},
+			verifiers: nil,
+			wantErr: true,
+		},
+		{
+			name:    "All components are set",
+			store:   &mockStore{},
+			verifiers: []Verifier{&mockVerifier{}},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateExecutorSetup(tt.store, tt.verifiers)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateExecutorSetup() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
