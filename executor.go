@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/ratify-project/ratify-go/internal/stack"
 	"oras.land/oras-go/v2/registry"
 )
 
@@ -52,13 +53,12 @@ type ValidationResult struct {
 
 // Executor is defined to validate artifacts.
 type Executor struct {
-	// Executor could configure multiple stores to fetch supply chain content.
-	// But each validating artifact should be restricted to a single store.
-	// Required.
-	Stores []Store
-
 	// Executor could use multiple verifiers to validate artifacts. Required.
 	Verifiers []Verifier
+
+	// Executor should configure exactly one store to fetch supply chain
+	// content. Required.
+	Store Store
 
 	// Executor should have at most one policy enforcer to evalute reports. If
 	// not set, the validation result will be returned without evaluation.
@@ -66,8 +66,26 @@ type Executor struct {
 	PolicyEnforcer PolicyEnforcer
 }
 
+// NewExecutor creates a new executor with the given verifiers, store, and
+// policy enforcer.
+func NewExecutor(verifiers []Verifier, store Store, policyEnforcer PolicyEnforcer) (*Executor, error) {
+	if err := validateExecutorSetup(verifiers, store); err != nil {
+		return nil, err
+	}
+
+	return &Executor{
+		Verifiers:      verifiers,
+		Store:          store,
+		PolicyEnforcer: policyEnforcer,
+	}, nil
+}
+
 // ValidateArtifact returns the result of verifying an artifact.
 func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOptions) (*ValidationResult, error) {
+	if err := validateExecutorSetup(e.Verifiers, e.Store); err != nil {
+		return nil, err
+	}
+
 	aggregatedVerifierReports, err := e.aggregateVerifierReports(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate and aggregate verifier reports: %w", err)
@@ -94,110 +112,99 @@ func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOp
 // aggregateVerifierReports generates and aggregates all verifier reports.
 func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateArtifactOptions) ([]*ValidationReport, error) {
 	var aggregatedVerifierReports []*ValidationReport
-	var err error
+
+	// Only resolve the root subject reference.
+	ref, err := e.resolveSubject(ctx, opts.Subject)
+	if err != nil {
+		return nil, err
+	}
 
 	// TODO: Implement a worker pool to validate artifacts concurrently.
 	// TODO: Enforce check on the stack size.
-	taskStack := make([]*task, 0)
+	// Enqueue the subject artifact as the first task.
+	taskStack := stack.NewStack[*task]()
+	taskStack.Push(&task{
+		store:    e.Store,
+		artifact: ref.String(),
+		registry: ref.Registry,
+		repo:     ref.Repository,
+	})
 
-	// Iterate over all stores to create tasks for each store so that further
-	// referrer artifacts will be fetched from the same store.
-	for _, store := range e.Stores {
-		taskStack = append(taskStack, &task{
-			store:    store,
-			artifact: opts.Subject,
-		})
-	}
+	for !taskStack.IsEmpty() {
+		// Ignore the bool as the stack is not empty.
+		task, _ := taskStack.Pop()
 
-	for len(taskStack) > 0 {
-		task := taskStack[len(taskStack)-1]
-		taskStack = taskStack[:len(taskStack)-1]
-
-		taskStack, aggregatedVerifierReports, err = e.processTask(ctx, task, taskStack, aggregatedVerifierReports, opts.ReferenceTypes)
+		newTasks, artifactReports, err := e.verifySubjectAgainstReferrers(ctx, task, opts.ReferenceTypes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate artifact %s: %w", task.artifact, err)
+		}
+
+		// Push the new tasks to the stack.
+		taskStack.Push(newTasks...)
+
+		// If the current task is the root task, add the artifactReports to the
+		// aggregatedVerifierReports. Otherwise, they are just artifactReports
+		// of the subject artifact.
+		if task.subjectReport != nil {
+			task.subjectReport.ArtifactReports = append(task.subjectReport.ArtifactReports, artifactReports...)
+		} else {
+			aggregatedVerifierReports = append(aggregatedVerifierReports, artifactReports...)
 		}
 	}
 
 	return aggregatedVerifierReports, nil
 }
 
-// processTask processes the task and returns the updated stack and aggregated
-// verifier reports.
-func (e *Executor) processTask(ctx context.Context, task *task, stack []*task, aggregatedVerifierReports []*ValidationReport, referenceTypes []string) ([]*task, []*ValidationReport, error) {
-	artifactRef := task.artifact
-	ref, err := registry.ParseReference(artifactRef)
+// verifySubjectAgainstReferrers verifies the subject artifact against all 
+// referrers in the store and produces new tasks for each referrer.
+func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, currentTask *task, referenceTypes []string) ([]*task, []*ValidationReport, error) {
+	var newTasks []*task
+	referrers, err := currentTask.store.ListReferrers(ctx, currentTask.artifact, referenceTypes, nil)
 	if err != nil {
-		return stack, nil, fmt.Errorf("failed to parse artifact reference %s: %w", artifactRef, err)
-	}
-
-	artifactDesc, err := task.store.Resolve(ctx, ref.String())
-	if err != nil {
-		return stack, nil, fmt.Errorf("failed to resolve artifact reference %s: %w", ref.Reference, err)
-	}
-	ref.Reference = artifactDesc.Digest.String()
-
-	stack, artifactReports, err := e.verifyAgainstReferrers(ctx, task.store, ref, stack, referenceTypes)
-	if err != nil {
-		return stack, nil, err
-	}
-
-	// If the current task is the root task, add the artifactReports to the
-	// aggregatedVerifierReports. Otherwise, they are just artifactReports of
-	// the subject artifact.
-	if task.subjectReport != nil {
-		task.subjectReport.ArtifactReports = append(task.subjectReport.ArtifactReports, artifactReports...)
-	} else {
-		aggregatedVerifierReports = append(aggregatedVerifierReports, artifactReports...)
-	}
-	return stack, aggregatedVerifierReports, nil
-}
-
-// verifyAgainstReferrers verifies the subject artifact against all referrers in
-// the store and produces new tasks for each referrer.
-func (e *Executor) verifyAgainstReferrers(ctx context.Context, store Store, subject registry.Reference, stack []*task, referenceTypes []string) ([]*task, []*ValidationReport, error) {
-	referrers, err := store.ListReferrers(ctx, subject.String(), referenceTypes, nil)
-	if err != nil {
-		return stack, nil, fmt.Errorf("failed to list referrers for artifact %s: %w", subject.String(), err)
+		return newTasks, nil, fmt.Errorf("failed to list referrers for artifact %s: %w", currentTask.artifact, err)
 	}
 
 	// We need to verify the artifact against its required referrer artifacts.
 	// artifactReports is used to store the validation reports of those
 	// referrer artifacts.
-	artifactReports := make([]*ValidationReport, 0)
+	var artifactReports []*ValidationReport
 	for _, referrer := range referrers {
-		artifactReport := &ValidationReport{}
-		artifactReport.Results, err = e.verifyArtifact(ctx, store, subject.String(), referrer)
+		results, err := e.verifyArtifact(ctx, currentTask.store, currentTask.artifact, referrer)
 		if err != nil {
-			return stack, nil, err
+			return newTasks, nil, err
+		}
+		artifactReport := &ValidationReport{
+			Subject:  currentTask.artifact,
+			Results:  results,
+			Artifact: referrer,
 		}
 		artifactReports = append(artifactReports, artifactReport)
-		referrerRef := registry.Reference{
-			Registry:   subject.Registry,
-			Repository: subject.Repository,
+	
+		referrerArtifact := registry.Reference{
+			Registry:   currentTask.registry,
+			Repository: currentTask.repo,
 			Reference:  referrer.Digest.String(),
 		}
-
-		stack = append(stack, &task{
-			store:         store,
-			artifact:      referrerRef.String(),
+		newTasks = append(newTasks, &task{
+			store:         currentTask.store,
+			artifact:      referrerArtifact.String(),
+			registry:      currentTask.registry,
+			repo:          currentTask.repo,
 			subjectReport: artifactReport,
 		})
 	}
-	return stack, artifactReports, nil
+	return newTasks, artifactReports, nil
 }
 
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
 func (e *Executor) verifyArtifact(ctx context.Context, store Store, subject string, artifact ocispec.Descriptor) ([]*VerificationResult, error) {
-	verifierReports := make([]*VerificationResult, 0)
+	var verifierReports []*VerificationResult
 
 	for _, verifier := range e.Verifiers {
 		if !verifier.Verifiable(artifact) {
 			continue
 		}
-		verifier := verifier
-		var verifierReport *VerificationResult
 		verifierReport, err := verifier.Verify(ctx, store, subject, artifact)
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify artifact %s with verifier %s: %w", subject, verifier.Name(), err)
@@ -207,4 +214,28 @@ func (e *Executor) verifyArtifact(ctx context.Context, store Store, subject stri
 	}
 
 	return verifierReports, nil
+}
+
+func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry.Reference, error) {
+	ref, err := registry.ParseReference(subject)
+	if err != nil {
+		return registry.Reference{}, fmt.Errorf("failed to parse subject reference %s: %w", subject, err)
+	}
+
+	artifactDesc, err := e.Store.Resolve(ctx, ref.String())
+	if err != nil {
+		return registry.Reference{}, fmt.Errorf("failed to resolve subject reference %s: %w", ref.Reference, err)
+	}
+	ref.Reference = artifactDesc.Digest.String()
+	return ref, nil
+}
+
+func validateExecutorSetup(verifiers []Verifier, store Store) error {
+	if len(verifiers) == 0 {
+		return fmt.Errorf("at least one verifier must be configured")
+	}
+	if store == nil {
+		return fmt.Errorf("store must be configured")
+	}
+	return nil
 }

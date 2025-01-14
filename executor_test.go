@@ -18,7 +18,6 @@ package ratify
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -127,7 +126,7 @@ func TestValidateArtifact(t *testing.T) {
 	tests := []struct {
 		name           string
 		opts           ValidateArtifactOptions
-		stores         []Store
+		store          Store
 		verifiers      []Verifier
 		policyEnforcer PolicyEnforcer
 		want           *ValidationResult
@@ -139,7 +138,7 @@ func TestValidateArtifact(t *testing.T) {
 				Subject:        "testrepo:v1",
 				ReferenceTypes: []string{"referenceType"},
 			},
-			stores:         []Store{&mockStore{}},
+			store:          &mockStore{},
 			verifiers:      []Verifier{&mockVerifier{}},
 			policyEnforcer: &mockPolicyEnforcer{},
 			want:           nil,
@@ -150,7 +149,7 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores:         []Store{&mockStore{}},
+			store:          &mockStore{},
 			verifiers:      []Verifier{&mockVerifier{}},
 			policyEnforcer: &mockPolicyEnforcer{},
 			want:           nil,
@@ -161,13 +160,13 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores: []Store{&mockStore{
+			store: &mockStore{
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
 					},
 				},
-			}},
+			},
 			verifiers:      []Verifier{&mockVerifier{}},
 			policyEnforcer: &mockPolicyEnforcer{},
 			want:           nil,
@@ -178,14 +177,14 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores: []Store{&mockStore{
+			store: &mockStore{
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
 					},
 				},
 				referrers: map[string][]ocispec.Descriptor{},
-			}},
+			},
 			verifiers:      []Verifier{&mockVerifier{}},
 			policyEnforcer: &mockPolicyEnforcer{},
 			want: &ValidationResult{
@@ -198,7 +197,7 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores: []Store{&mockStore{
+			store: &mockStore{
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
@@ -211,7 +210,7 @@ func TestValidateArtifact(t *testing.T) {
 						},
 					},
 				},
-			}},
+			},
 			verifiers:      []Verifier{&mockVerifier{}},
 			policyEnforcer: &mockPolicyEnforcer{},
 			want: &ValidationResult{
@@ -230,7 +229,7 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores: []Store{&mockStore{
+			store: &mockStore{
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
@@ -243,7 +242,7 @@ func TestValidateArtifact(t *testing.T) {
 						},
 					},
 				},
-			}},
+			},
 			verifiers: []Verifier{&mockVerifier{
 				verifiable: true,
 			}},
@@ -256,7 +255,7 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores: []Store{&mockStore{
+			store: &mockStore{
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
@@ -269,11 +268,11 @@ func TestValidateArtifact(t *testing.T) {
 						},
 					},
 				},
-			}},
+			},
 			verifiers: []Verifier{&mockVerifier{
 				verifiable: true,
 				verifyResult: map[string]*VerificationResult{
-					testDigest2: &VerificationResult{
+					testDigest2: {
 						Description: validMessage1,
 					},
 				},
@@ -298,7 +297,7 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores: []Store{&mockStore{
+			store: &mockStore{
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
@@ -311,11 +310,11 @@ func TestValidateArtifact(t *testing.T) {
 						},
 					},
 				},
-			}},
+			},
 			verifiers: []Verifier{&mockVerifier{
 				verifiable: true,
 				verifyResult: map[string]*VerificationResult{
-					testDigest2: &VerificationResult{
+					testDigest2: {
 						Description: validMessage1,
 					},
 				},
@@ -340,7 +339,7 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores: []Store{&mockStore{
+			store: &mockStore{
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
@@ -353,11 +352,11 @@ func TestValidateArtifact(t *testing.T) {
 						},
 					},
 				},
-			}},
+			},
 			verifiers: []Verifier{&mockVerifier{
 				verifiable: true,
 				verifyResult: map[string]*VerificationResult{
-					testDigest2: &VerificationResult{
+					testDigest2: {
 						Description: validMessage1,
 					},
 				},
@@ -373,16 +372,10 @@ func TestValidateArtifact(t *testing.T) {
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
-			stores: []Store{&mockStore{
+			store: &mockStore{
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
-					},
-					testArtifact2: {
-						Digest: testDigest2,
-					},
-					testArtifact4: {
-						Digest: testDigest4,
 					},
 				},
 				referrers: map[string][]ocispec.Descriptor{
@@ -405,20 +398,20 @@ func TestValidateArtifact(t *testing.T) {
 						},
 					},
 				},
-			}},
+			},
 			verifiers: []Verifier{&mockVerifier{
 				verifiable: true,
 				verifyResult: map[string]*VerificationResult{
-					testDigest2: &VerificationResult{
+					testDigest2: {
 						Description: validMessage2,
 					},
-					testDigest3: &VerificationResult{
+					testDigest3: {
 						Description: validMessage3,
 					},
-					testDigest4: &VerificationResult{
+					testDigest4: {
 						Description: validMessage4,
 					},
-					testDigest5: &VerificationResult{
+					testDigest5: {
 						Description: validMessage5,
 					},
 				},
@@ -465,11 +458,7 @@ func TestValidateArtifact(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			executor := &Executor{
-				Stores:         tt.stores,
-				PolicyEnforcer: tt.policyEnforcer,
-				Verifiers:      tt.verifiers,
-			}
+			executor, _ := NewExecutor(tt.verifiers, tt.store, tt.policyEnforcer)
 			got, err := executor.ValidateArtifact(context.Background(), tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateArtifact() error = %v, wantErr %v", err, tt.wantErr)
@@ -518,7 +507,7 @@ func sameArtifactValidationReport(report1, report2 *ValidationReport) bool {
 	for _, verifierReport := range report1.Results {
 		hasSameReport := false
 		for _, verifierReport2 := range report2.Results {
-			if reflect.DeepEqual(verifierReport, verifierReport2) {
+			if sameVerifierReport(verifierReport, verifierReport2) {
 				hasSameReport = true
 				break
 			}
@@ -543,4 +532,8 @@ func sameArtifactValidationReport(report1, report2 *ValidationReport) bool {
 		}
 	}
 	return true
+}
+
+func sameVerifierReport(report1, report2 *VerificationResult) bool {
+	return report1.Err == report2.Err && report1.Description == report2.Description
 }

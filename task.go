@@ -19,12 +19,18 @@ package ratify
 // the executor.
 type task struct {
 	// artifact is the digested reference of the referrer artifact that will be
-	// verified.
+	// verified. Required.
 	artifact string
 
-	// subjectReport is the report of the subject artifact.
-	subjectReport *ValidationReport
+	// registry is the registry where the artifact is stored. Required.
+	registry string
 
-	// store is the store that stores the artifacts.
+	// repo is the repository where the artifact is stored. Required.
+	repo string
+
+	// store is the store that stores the artifacts. Required.
 	store Store
+
+	// subjectReport is the report of the subject artifact. Optional.
+	subjectReport *ValidationReport
 }
