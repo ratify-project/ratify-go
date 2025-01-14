@@ -23,7 +23,7 @@ import (
 )
 
 // registeredStores saves the registered store factories.
-var registeredStores map[string]func(CreateStoreOptions) (Store, error)
+var registeredStores map[string]func(NewStoreOptions) (Store, error)
 
 // Store is an interface that defines methods to query the graph of supply chain
 // content including its related content
@@ -50,13 +50,13 @@ type Store interface {
 	FetchImageManifest(ctx context.Context, repo string, desc ocispec.Descriptor) (*ocispec.Manifest, error)
 }
 
-// CreateStoreOptions represents the options to create a store.
-type CreateStoreOptions struct {
+// NewStoreOptions represents the options to create a store.
+type NewStoreOptions struct {
 	// Name is unique identifier of a store instance. Required.
 	Name string
 
 	// Type represents a specific implementation of stores. Required.
-	// Note: there could be multiple stores of the same type with different 
+	// Note: there could be multiple stores of the same type with different
 	//       names.
 	Type string
 
@@ -65,7 +65,7 @@ type CreateStoreOptions struct {
 }
 
 // RegisterStore registers a store factory to the system.
-func RegisterStore(storeType string, create func(CreateStoreOptions) (Store, error)) {
+func RegisterStore(storeType string, create func(NewStoreOptions) (Store, error)) {
 	if storeType == "" {
 		panic("store type cannot be empty")
 	}
@@ -73,7 +73,7 @@ func RegisterStore(storeType string, create func(CreateStoreOptions) (Store, err
 		panic("store factory cannot be nil")
 	}
 	if registeredStores == nil {
-		registeredStores = make(map[string]func(CreateStoreOptions) (Store, error))
+		registeredStores = make(map[string]func(NewStoreOptions) (Store, error))
 	}
 	if _, registered := registeredStores[storeType]; registered {
 		panic(fmt.Sprintf("store factory type %s already registered", storeType))
@@ -81,8 +81,8 @@ func RegisterStore(storeType string, create func(CreateStoreOptions) (Store, err
 	registeredStores[storeType] = create
 }
 
-// CreateStore creates a store instance if it belongs to a registered type.
-func CreateStore(opts CreateStoreOptions) (Store, error) {
+// NewStore creates a store instance if it belongs to a registered type.
+func NewStore(opts NewStoreOptions) (Store, error) {
 	if opts.Name == "" || opts.Type == "" {
 		return nil, fmt.Errorf("name or type is not provided in the store options")
 	}

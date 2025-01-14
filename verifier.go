@@ -23,7 +23,7 @@ import (
 )
 
 // registeredVerifiers saves the registered verifier factories.
-var registeredVerifiers map[string]func(CreateVerifierOptions) (Verifier, error)
+var registeredVerifiers map[string]func(NewVerifierOptions) (Verifier, error)
 
 // Verifier is an interface that defines methods to verify an artifact
 // associated with a subject.
@@ -60,8 +60,8 @@ type VerificationResult struct {
 	Detail any
 }
 
-// CreateVerifierOptions represents the options to create a verifier.
-type CreateVerifierOptions struct {
+// NewVerifierOptions represents the options to create a verifier.
+type NewVerifierOptions struct {
 	// Name is the unique identifier of a verifier instantce. Required.
 	Name string
 
@@ -75,7 +75,7 @@ type CreateVerifierOptions struct {
 }
 
 // RegisterVerifier registers a verifier factory to the system.
-func RegisterVerifier(verifierType string, create func(CreateVerifierOptions) (Verifier, error)) {
+func RegisterVerifier(verifierType string, create func(NewVerifierOptions) (Verifier, error)) {
 	if verifierType == "" {
 		panic("verifier type cannot be empty")
 	}
@@ -83,7 +83,7 @@ func RegisterVerifier(verifierType string, create func(CreateVerifierOptions) (V
 		panic("verifier factory cannot be nil")
 	}
 	if registeredVerifiers == nil {
-		registeredVerifiers = make(map[string]func(CreateVerifierOptions) (Verifier, error))
+		registeredVerifiers = make(map[string]func(NewVerifierOptions) (Verifier, error))
 	}
 	if _, registered := registeredVerifiers[verifierType]; registered {
 		panic(fmt.Sprintf("verifier factory named %s already registered", verifierType))
@@ -91,8 +91,8 @@ func RegisterVerifier(verifierType string, create func(CreateVerifierOptions) (V
 	registeredVerifiers[verifierType] = create
 }
 
-// CreateVerifier creates a verifier instance if it belongs to a registered type.
-func CreateVerifier(opts CreateVerifierOptions) (Verifier, error) {
+// NewVerifier creates a verifier instance if it belongs to a registered type.
+func NewVerifier(opts NewVerifierOptions) (Verifier, error) {
 	if opts.Name == "" || opts.Type == "" {
 		return nil, fmt.Errorf("name or type is not provided in the verifier options")
 	}

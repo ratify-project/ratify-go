@@ -23,7 +23,7 @@ import (
 )
 
 // registeredPolicyEnforcers saves the registered policy enforcer factories.
-var registeredPolicyEnforcers map[string]func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error)
+var registeredPolicyEnforcers map[string]func(NewPolicyEnforcerOptions) (PolicyEnforcer, error)
 
 // ValidationReport describes the results of verifying an artifact and its
 // nested artifacts by available verifiers.
@@ -57,9 +57,9 @@ type PolicyEnforcer interface {
 	Evaluate(ctx context.Context, artifactReports []*ValidationReport) (bool, error)
 }
 
-// CreatePolicyEnforcerOptions represents the options to create a policy
-// enforcer plugin.
-type CreatePolicyEnforcerOptions struct {
+// NewPolicyEnforcerOptions represents the options to create a policy enforcer
+// plugin.
+type NewPolicyEnforcerOptions struct {
 	// Name is unique identifier of a policy enforcer instance. Required.
 	Name string
 
@@ -73,7 +73,7 @@ type CreatePolicyEnforcerOptions struct {
 }
 
 // RegisterPolicyEnforcer registers a policy enforcer factory to the system.
-func RegisterPolicyEnforcer(policyEnforcerType string, create func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error)) {
+func RegisterPolicyEnforcer(policyEnforcerType string, create func(NewPolicyEnforcerOptions) (PolicyEnforcer, error)) {
 	if policyEnforcerType == "" {
 		panic("policy enforcer type cannot be empty")
 	}
@@ -81,7 +81,7 @@ func RegisterPolicyEnforcer(policyEnforcerType string, create func(CreatePolicyE
 		panic("policy enforcer factory cannot be nil")
 	}
 	if registeredPolicyEnforcers == nil {
-		registeredPolicyEnforcers = make(map[string]func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error))
+		registeredPolicyEnforcers = make(map[string]func(NewPolicyEnforcerOptions) (PolicyEnforcer, error))
 	}
 	if _, registered := registeredPolicyEnforcers[policyEnforcerType]; registered {
 		panic(fmt.Sprintf("policy enforcer factory type %s already registered", policyEnforcerType))
@@ -89,9 +89,9 @@ func RegisterPolicyEnforcer(policyEnforcerType string, create func(CreatePolicyE
 	registeredPolicyEnforcers[policyEnforcerType] = create
 }
 
-// CreatePolicyEnforcer creates a policy enforcer instance if it belongs to a
+// NewPolicyEnforcer creates a policy enforcer instance if it belongs to a
 // registered type.
-func CreatePolicyEnforcer(opts CreatePolicyEnforcerOptions) (PolicyEnforcer, error) {
+func NewPolicyEnforcer(opts NewPolicyEnforcerOptions) (PolicyEnforcer, error) {
 	if opts.Name == "" || opts.Type == "" {
 		return nil, fmt.Errorf("name or type is not provided in the policy enforcer options")
 	}
