@@ -19,7 +19,7 @@ import "testing"
 
 const test = "test"
 
-func createVerifier(_ CreateVerifierOptions) (Verifier, error) {
+func newVerifier(_ NewVerifierOptions) (Verifier, error) {
 	return nil, nil
 }
 
@@ -29,7 +29,7 @@ func TestRegisterVerifier_EmptyType_Panic(t *testing.T) {
 			t.Errorf("Expected to panic")
 		}
 	}()
-	RegisterVerifier("", createVerifier)
+	RegisterVerifier("", newVerifier)
 }
 
 func TestRegisterVerifier_NilFactory_Panic(t *testing.T) {
@@ -46,31 +46,31 @@ func TestRegisterVerifier_DuplicateFactory_Panic(t *testing.T) {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		registeredVerifiers = make(map[string]func(CreateVerifierOptions) (Verifier, error))
+		registeredVerifiers = make(map[string]func(NewVerifierOptions) (Verifier, error))
 	}()
-	RegisterVerifier(test, createVerifier)
-	RegisterVerifier(test, createVerifier)
+	RegisterVerifier(test, newVerifier)
+	RegisterVerifier(test, newVerifier)
 }
 
-func TestCreateVerifier(t *testing.T) {
-	RegisterVerifier(test, createVerifier)
+func TestNewVerifier(t *testing.T) {
+	RegisterVerifier(test, newVerifier)
 	defer func() {
-		registeredVerifiers = make(map[string]func(CreateVerifierOptions) (Verifier, error))
+		registeredVerifiers = make(map[string]func(NewVerifierOptions) (Verifier, error))
 	}()
 
 	tests := []struct {
 		name        string
-		opts        CreateVerifierOptions
+		opts        NewVerifierOptions
 		expectedErr bool
 	}{
 		{
 			name:        "no type provided",
-			opts:        CreateVerifierOptions{},
+			opts:        NewVerifierOptions{},
 			expectedErr: true,
 		},
 		{
 			name: "non-registered type",
-			opts: CreateVerifierOptions{
+			opts: NewVerifierOptions{
 				Name: test,
 				Type: "non-registered",
 			},
@@ -78,7 +78,7 @@ func TestCreateVerifier(t *testing.T) {
 		},
 		{
 			name: "registered type",
-			opts: CreateVerifierOptions{
+			opts: NewVerifierOptions{
 				Name: test,
 				Type: test,
 			},
@@ -88,7 +88,7 @@ func TestCreateVerifier(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := CreateVerifier(test.opts)
+			_, err := NewVerifier(test.opts)
 			if test.expectedErr != (err != nil) {
 				t.Errorf("Expected error: %v, got: %v", test.expectedErr, err)
 			}

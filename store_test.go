@@ -17,7 +17,7 @@ package ratify
 
 import "testing"
 
-func createStore(_ CreateStoreOptions) (Store, error) {
+func newStore(_ NewStoreOptions) (Store, error) {
 	return nil, nil
 }
 
@@ -27,7 +27,7 @@ func TestRegisterStore_EmptyType_Panic(t *testing.T) {
 			t.Errorf("Expected to panic")
 		}
 	}()
-	RegisterStore("", createStore)
+	RegisterStore("", newStore)
 }
 
 func TestRegisterStore_NilFactory_Panic(t *testing.T) {
@@ -44,31 +44,31 @@ func TestRegisterStore_DuplicateFactory_Panic(t *testing.T) {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		registeredStores = make(map[string]func(CreateStoreOptions) (Store, error))
+		registeredStores = make(map[string]func(NewStoreOptions) (Store, error))
 	}()
-	RegisterStore(test, createStore)
-	RegisterStore(test, createStore)
+	RegisterStore(test, newStore)
+	RegisterStore(test, newStore)
 }
 
-func TestCreateStore(t *testing.T) {
-	RegisterStore(test, createStore)
+func TestNewStore(t *testing.T) {
+	RegisterStore(test, newStore)
 	defer func() {
-		registeredStores = make(map[string]func(CreateStoreOptions) (Store, error))
+		registeredStores = make(map[string]func(NewStoreOptions) (Store, error))
 	}()
 
 	tests := []struct {
 		name        string
-		opts        CreateStoreOptions
+		opts        NewStoreOptions
 		expectedErr bool
 	}{
 		{
 			name:        "no type provided",
-			opts:        CreateStoreOptions{},
+			opts:        NewStoreOptions{},
 			expectedErr: true,
 		},
 		{
 			name: "non-registered type",
-			opts: CreateStoreOptions{
+			opts: NewStoreOptions{
 				Name: test,
 				Type: "non-registered",
 			},
@@ -76,7 +76,7 @@ func TestCreateStore(t *testing.T) {
 		},
 		{
 			name: "registered type",
-			opts: CreateStoreOptions{
+			opts: NewStoreOptions{
 				Name: test,
 				Type: test,
 			},
@@ -86,7 +86,7 @@ func TestCreateStore(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := CreateStore(test.opts)
+			_, err := NewStore(test.opts)
 			if test.expectedErr != (err != nil) {
 				t.Errorf("Expected error: %v, got: %v", test.expectedErr, err)
 			}

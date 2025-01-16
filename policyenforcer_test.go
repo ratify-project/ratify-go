@@ -17,7 +17,7 @@ package ratify
 
 import "testing"
 
-func createPolicyEnforcer(_ CreatePolicyEnforcerOptions) (PolicyEnforcer, error) {
+func newPolicyEnforcer(_ NewPolicyEnforcerOptions) (PolicyEnforcer, error) {
 	return nil, nil
 }
 
@@ -27,7 +27,7 @@ func TestRegisterPolicyEnforcer_EmptyType_Panic(t *testing.T) {
 			t.Errorf("Expected to panic")
 		}
 	}()
-	RegisterPolicyEnforcer("", createPolicyEnforcer)
+	RegisterPolicyEnforcer("", newPolicyEnforcer)
 }
 
 func TestRegisterPolicyEnforcer_NilFactory_Panic(t *testing.T) {
@@ -44,31 +44,31 @@ func TestRegisterPolicyEnforcer_DuplicateFactory_Panic(t *testing.T) {
 		if r := recover(); r == nil {
 			t.Errorf("Expected to panic")
 		}
-		registeredPolicyEnforcers = make(map[string]func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error))
+		registeredPolicyEnforcers = make(map[string]func(NewPolicyEnforcerOptions) (PolicyEnforcer, error))
 	}()
-	RegisterPolicyEnforcer(test, createPolicyEnforcer)
-	RegisterPolicyEnforcer(test, createPolicyEnforcer)
+	RegisterPolicyEnforcer(test, newPolicyEnforcer)
+	RegisterPolicyEnforcer(test, newPolicyEnforcer)
 }
 
-func TestCreatePolicyEnforcer(t *testing.T) {
-	RegisterPolicyEnforcer(test, createPolicyEnforcer)
+func TestNewPolicyEnforcer(t *testing.T) {
+	RegisterPolicyEnforcer(test, newPolicyEnforcer)
 	defer func() {
-		registeredPolicyEnforcers = make(map[string]func(CreatePolicyEnforcerOptions) (PolicyEnforcer, error))
+		registeredPolicyEnforcers = make(map[string]func(NewPolicyEnforcerOptions) (PolicyEnforcer, error))
 	}()
 
 	tests := []struct {
 		name        string
-		opts        CreatePolicyEnforcerOptions
+		opts        NewPolicyEnforcerOptions
 		expectedErr bool
 	}{
 		{
 			name:        "no type provided",
-			opts:        CreatePolicyEnforcerOptions{},
+			opts:        NewPolicyEnforcerOptions{},
 			expectedErr: true,
 		},
 		{
 			name: "non-registered type",
-			opts: CreatePolicyEnforcerOptions{
+			opts: NewPolicyEnforcerOptions{
 				Name: test,
 				Type: "non-registered",
 			},
@@ -76,7 +76,7 @@ func TestCreatePolicyEnforcer(t *testing.T) {
 		},
 		{
 			name: "registered type",
-			opts: CreatePolicyEnforcerOptions{
+			opts: NewPolicyEnforcerOptions{
 				Name: test,
 				Type: test,
 			},
@@ -86,7 +86,7 @@ func TestCreatePolicyEnforcer(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := CreatePolicyEnforcer(test.opts)
+			_, err := NewPolicyEnforcer(test.opts)
 			if test.expectedErr != (err != nil) {
 				t.Errorf("Expected error: %v, got: %v", test.expectedErr, err)
 			}
