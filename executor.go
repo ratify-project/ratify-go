@@ -112,7 +112,7 @@ func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOp
 // aggregateVerifierReports generates and aggregates all verifier reports.
 func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateArtifactOptions) ([]*ValidationReport, error) {
 	// Only resolve the root subject reference.
-	ref, err := e.resolveSubject(ctx, opts.Subject)
+	ref, desc, err := e.resolveSubject(ctx, opts.Subject)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +122,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	// Enqueue the subject artifact as the first task.
 	rootTask := &executorTask{
 		artifact:      ref,
+		artifactDesc:  desc,
 		subjectReport: new(ValidationReport),
 	}
 	var taskStack stack.Stack[*executorTask]
@@ -153,7 +154,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	var artifactReports []*ValidationReport
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
-			results, err := e.verifyArtifact(ctx, artifact, referrer)
+			results, err := e.verifyArtifact(ctx, artifact, task.artifactDesc, referrer)
 			if err != nil {
 				return err
 			}
@@ -168,6 +169,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 			referrerArtifact.Reference = referrer.Digest.String()
 			newTasks = append(newTasks, &executorTask{
 				artifact:      referrerArtifact,
+				artifactDesc:  referrer,
 				subjectReport: artifactReport,
 			})
 		}
@@ -183,14 +185,19 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
-func (e *Executor) verifyArtifact(ctx context.Context, subject string, artifact ocispec.Descriptor) ([]*VerificationResult, error) {
+func (e *Executor) verifyArtifact(ctx context.Context, subject string, subjectDesc, artifact ocispec.Descriptor) ([]*VerificationResult, error) {
 	var verifierReports []*VerificationResult
 
 	for _, verifier := range e.Verifiers {
 		if !verifier.Verifiable(artifact) {
 			continue
 		}
-		verifierReport, err := verifier.Verify(ctx, e.Store, subject, artifact)
+		verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
+			ArtifactStore:     e.Store,
+			Subject:           subject,
+			SubjectDescriptor: subjectDesc,
+			Artifact:          artifact,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify artifact %s with verifier %s: %w", subject, verifier.Name(), err)
 		}
@@ -201,18 +208,18 @@ func (e *Executor) verifyArtifact(ctx context.Context, subject string, artifact 
 	return verifierReports, nil
 }
 
-func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry.Reference, error) {
+func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry.Reference, ocispec.Descriptor, error) {
 	ref, err := registry.ParseReference(subject)
 	if err != nil {
-		return registry.Reference{}, fmt.Errorf("failed to parse subject reference %s: %w", subject, err)
+		return registry.Reference{}, ocispec.Descriptor{}, fmt.Errorf("failed to parse subject reference %s: %w", subject, err)
 	}
 
 	artifactDesc, err := e.Store.Resolve(ctx, ref.String())
 	if err != nil {
-		return registry.Reference{}, fmt.Errorf("failed to resolve subject reference %s: %w", ref.Reference, err)
+		return registry.Reference{}, ocispec.Descriptor{}, fmt.Errorf("failed to resolve subject reference %s: %w", ref.Reference, err)
 	}
 	ref.Reference = artifactDesc.Digest.String()
-	return ref, nil
+	return ref, artifactDesc, nil
 }
 
 // executorTask is a struct that represents a executorTask that verifies an artifact by
@@ -221,6 +228,9 @@ type executorTask struct {
 	// artifact is the digested reference of the referrer artifact that will be
 	// verified.
 	artifact registry.Reference
+
+	// artifactDesc is the descriptor of the referrer artifact.
+	artifactDesc ocispec.Descriptor
 
 	// subjectReport is the report of the subject artifact.
 	subjectReport *ValidationReport
