@@ -193,10 +193,10 @@ func (e *Executor) verifyArtifact(ctx context.Context, subject string, subjectDe
 			continue
 		}
 		verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
-			ArtifactStore:     e.Store,
-			Subject:           subject,
-			SubjectDescriptor: subjectDesc,
-			Artifact:          artifact,
+			Store:              e.Store,
+			Subject:            subject,
+			SubjectDescriptor:  subjectDesc,
+			ArtifactDescriptor: artifact,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify artifact %s with verifier %s: %w", subject, verifier.Name(), err)

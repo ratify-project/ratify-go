@@ -66,7 +66,7 @@ func (m *mockVerifier) Verify(ctx context.Context, opts *VerifyOptions) (*Verifi
 	if m.verifyResult == nil {
 		return &VerificationResult{}, errors.New("verify result not initialized")
 	}
-	if result, ok := m.verifyResult[opts.Artifact.Digest.String()]; ok {
+	if result, ok := m.verifyResult[opts.ArtifactDescriptor.Digest.String()]; ok {
 		return result, nil
 	}
 	return &VerificationResult{}, nil

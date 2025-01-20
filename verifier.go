@@ -44,8 +44,8 @@ type Verifier interface {
 
 // VerifyOptions represents the options to verify a subject against an artifact.
 type VerifyOptions struct {
-	// ArtifactStore is the store to access the artifacts. Required.
-	ArtifactStore Store
+	// Store is the store to access the artifacts. Required.
+	Store Store
 
 	// Subject is the subject reference of the artifact being verified.
 	// Required.
@@ -55,8 +55,9 @@ type VerifyOptions struct {
 	// Required.
 	SubjectDescriptor ocispec.Descriptor
 
-	// Artifact is the descriptor of the artifact being verified against.
-	Artifact ocispec.Descriptor
+	// ArtifactDescriptor is the descriptor of the artifact being verified
+	// against. Required.
+	ArtifactDescriptor ocispec.Descriptor
 }
 
 // VerificationResult defines the verification result that a verifier plugin
