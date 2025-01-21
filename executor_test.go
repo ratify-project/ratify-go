@@ -59,11 +59,14 @@ func (m *mockVerifier) Verifiable(_ ocispec.Descriptor) bool {
 	return m.verifiable
 }
 
-func (m *mockVerifier) Verify(ctx context.Context, store Store, subject string, artifact ocispec.Descriptor) (*VerificationResult, error) {
+func (m *mockVerifier) Verify(ctx context.Context, opts *VerifyOptions) (*VerificationResult, error) {
+	if opts.SubjectDescriptor.Digest == "" {
+		return nil, errors.New("subject digest not set")
+	}
 	if m.verifyResult == nil {
 		return &VerificationResult{}, errors.New("verify result not initialized")
 	}
-	if result, ok := m.verifyResult[artifact.Digest.String()]; ok {
+	if result, ok := m.verifyResult[opts.ArtifactDescriptor.Digest.String()]; ok {
 		return result, nil
 	}
 	return &VerificationResult{}, nil
@@ -538,28 +541,28 @@ func sameVerifierReport(report1, report2 *VerificationResult) bool {
 
 func TestValidateExecutorSetup(t *testing.T) {
 	tests := []struct {
-		name    string
-		store   Store
+		name      string
+		store     Store
 		verifiers []Verifier
-		wantErr bool
+		wantErr   bool
 	}{
 		{
-			name:    "Store is not set",
-			store:   nil,
+			name:      "Store is not set",
+			store:     nil,
 			verifiers: []Verifier{&mockVerifier{}},
-			wantErr: true,
+			wantErr:   true,
 		},
 		{
-			name:    "Verifiers are not set",
-			store:   &mockStore{},
+			name:      "Verifiers are not set",
+			store:     &mockStore{},
 			verifiers: nil,
-			wantErr: true,
+			wantErr:   true,
 		},
 		{
-			name:    "All components are set",
-			store:   &mockStore{},
+			name:      "All components are set",
+			store:     &mockStore{},
 			verifiers: []Verifier{&mockVerifier{}},
-			wantErr: false,
+			wantErr:   false,
 		},
 	}
 

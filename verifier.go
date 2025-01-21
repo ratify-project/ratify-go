@@ -39,7 +39,25 @@ type Verifier interface {
 
 	// Verify verifies the subject in the store against the artifact and
 	// returns the verification result.
-	Verify(ctx context.Context, store Store, subject string, artifact ocispec.Descriptor) (*VerificationResult, error)
+	Verify(ctx context.Context, opts *VerifyOptions) (*VerificationResult, error)
+}
+
+// VerifyOptions represents the options to verify a subject against an artifact.
+type VerifyOptions struct {
+	// Store is the store to access the artifacts. Required.
+	Store Store
+
+	// Subject is the subject reference of the artifact being verified.
+	// Required.
+	Subject string
+
+	// SubjectDescriptor is the descriptor of the subject being verified.
+	// Required.
+	SubjectDescriptor ocispec.Descriptor
+
+	// ArtifactDescriptor is the descriptor of the artifact being verified
+	// against. Required.
+	ArtifactDescriptor ocispec.Descriptor
 }
 
 // VerificationResult defines the verification result that a verifier plugin
