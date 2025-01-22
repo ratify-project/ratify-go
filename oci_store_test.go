@@ -36,6 +36,9 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 			"oci-layout": &fstest.MapFile{
 				Data: []byte(`{"imageLayoutVersion":"1.0.0"}`),
 			},
+			"index.json": &fstest.MapFile{
+				Data: []byte(`{"schemaVersion":2,"manifests":[]}`),
+			},
 		}
 		_, err := NewOCIStoreFromFS(ctx, name, fsys)
 		if err != nil {
@@ -56,7 +59,7 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 
 func TestOCIStore_Name(t *testing.T) {
 	ctx := context.Background()
-	var fsys fstest.MapFS
+	fsys := os.DirFS("testdata/oci_store/hello")
 	want := "test"
 	s, err := NewOCIStoreFromFS(ctx, want, fsys)
 	if err != nil {
