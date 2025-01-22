@@ -154,6 +154,69 @@ func TestOCIStore_Resolve(t *testing.T) {
 	}
 }
 
+func TestOCIStore_Resolve_Full_Reference(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewOCIStoreFromTar(ctx, "hello", "testdata/oci_store/full_ref.tar")
+	if err != nil {
+		t.Fatalf("NewOCIStoreFromTar() error = %v, want nil", err)
+	}
+	desc := ocispec.Descriptor{
+		MediaType: "application/vnd.oci.image.manifest.v1+json",
+		Digest:    "sha256:e46c5f19fbdd36ba43f8ef83805477cddcd11e3349b9a651e453ed257f1cebfe",
+		Size:      588,
+	}
+
+	tests := []struct {
+		name    string
+		ref     string
+		want    ocispec.Descriptor
+		wantErr bool
+	}{
+		{
+			name:    "tag only",
+			ref:     "v1",
+			wantErr: true,
+		},
+		{
+			name: "digest only",
+			ref:  "sha256:e46c5f19fbdd36ba43f8ef83805477cddcd11e3349b9a651e453ed257f1cebfe",
+			want: desc,
+		},
+		{
+			name: "full ref",
+			ref:  "localhost:5000/hello:v1",
+			want: desc,
+		},
+		{
+			name: "full digest ref",
+			ref:  "localhost:5000/hello@sha256:e46c5f19fbdd36ba43f8ef83805477cddcd11e3349b9a651e453ed257f1cebfe",
+			want: desc,
+		},
+		{
+			name:    "non-existing ref",
+			ref:     "v2",
+			wantErr: true,
+		},
+		{
+			name:    "non-existing digest ref",
+			ref:     "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := store.Resolve(ctx, tt.ref)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("OCIStore.Resolve() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !content.Equal(got, tt.want) {
+				t.Errorf("OCIStore.Resolve() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestOCIStore_ListReferrers(t *testing.T) {
 	ctx := context.Background()
 	fsys := os.DirFS("testdata/oci_store/hello")
@@ -236,6 +299,42 @@ func TestOCIStore_ListReferrers(t *testing.T) {
 				t.Errorf("OCIStore.ListReferrers() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestOCIStore_ListReferrers_Full_Reference(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewOCIStoreFromTar(ctx, "hello", "testdata/oci_store/full_ref.tar")
+	if err != nil {
+		t.Fatalf("NewOCIStoreFromTar() error = %v, want nil", err)
+	}
+	const ref = "localhost:5000/hello:v1"
+	fooDesc := ocispec.Descriptor{
+		MediaType:    "application/vnd.oci.image.manifest.v1+json",
+		Digest:       "sha256:9244a419606855a53eec9eab33fb11b06b567001be2240816048ad67c3d373ff",
+		Size:         917,
+		ArtifactType: "application/foo",
+		Annotations: map[string]string{
+			"org.opencontainers.image.created": "2025-01-22T13:57:49Z",
+		},
+	}
+
+	var got []ocispec.Descriptor
+	var fnCount int32
+	fn := func(referrers []ocispec.Descriptor) error {
+		atomic.AddInt32(&fnCount, 1)
+		got = referrers
+		return nil
+	}
+	if err := store.ListReferrers(ctx, ref, nil, fn); err != nil {
+		t.Errorf("OCIStore.ListReferrers() error = %v, wantErr false", err)
+		return
+	}
+	if fnCount > 1 {
+		t.Errorf("OCIStore.ListReferrers() count(fn) = %v, want 1", fnCount)
+	}
+	if want := []ocispec.Descriptor{fooDesc}; !reflect.DeepEqual(got, want) {
+		t.Errorf("OCIStore.ListReferrers() = %v, want %v", got, want)
 	}
 }
 
