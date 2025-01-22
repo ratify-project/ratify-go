@@ -44,7 +44,6 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 		_, err := NewOCIStoreFromFS(ctx, name, fsys)
 		if err != nil {
 			t.Errorf("NewOCIStoreFromFS() error = %v, wantErr false", err)
-			return
 		}
 	})
 
@@ -53,6 +52,26 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 		_, err := NewOCIStoreFromFS(ctx, name, fsys)
 		if err == nil {
 			t.Errorf("NewOCIStoreFromFS() error = nil, wantErr true")
+			return
+		}
+	})
+}
+
+func TestNewOCIStoreFromTar(t *testing.T) {
+	ctx := context.Background()
+	const name = "test"
+
+	t.Run("valid tar", func(t *testing.T) {
+		_, err := NewOCIStoreFromTar(ctx, name, "testdata/oci_store/full_ref.tar")
+		if err != nil {
+			t.Errorf("NewOCIStoreFromTar() error = %v, wantErr false", err)
+		}
+	})
+
+	t.Run("non-existing path", func(t *testing.T) {
+		_, err := NewOCIStoreFromTar(ctx, name, "non-existing.tar")
+		if err == nil {
+			t.Errorf("NewOCIStoreFromTar() error = nil, wantErr true")
 			return
 		}
 	})
