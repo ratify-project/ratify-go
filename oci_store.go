@@ -98,6 +98,10 @@ func (s *OCIStore) ListReferrers(ctx context.Context, ref string, artifactTypes 
 	if err != nil {
 		return err
 	}
+	if len(artifactTypes) == 0 {
+		return fn(referrers)
+	}
+
 	referrers = slices.DeleteFunc(referrers, func(desc ocispec.Descriptor) bool {
 		return !slices.Contains(artifactTypes, desc.ArtifactType)
 	})
