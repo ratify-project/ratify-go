@@ -91,6 +91,11 @@ func (s *OCIStore) Resolve(ctx context.Context, ref string) (ocispec.Descriptor,
 func (s *OCIStore) ListReferrers(ctx context.Context, ref string, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) error {
 	desc, err := s.Resolve(ctx, ref)
 	if err != nil {
+		// return empty referrer list if the subject is not found.
+		// reference: https://github.com/opencontainers/distribution-spec/blob/v1.1.0/spec.md#listing-referrers
+		if errors.Is(err, errdef.ErrNotFound) {
+			return nil
+		}
 		return err
 	}
 
@@ -98,13 +103,18 @@ func (s *OCIStore) ListReferrers(ctx context.Context, ref string, artifactTypes 
 	if err != nil {
 		return err
 	}
-	if len(artifactTypes) == 0 {
-		return fn(referrers)
+
+	// filter referrers by artifact types if specified.
+	if len(artifactTypes) > 0 {
+		referrers = slices.DeleteFunc(referrers, func(desc ocispec.Descriptor) bool {
+			return !slices.Contains(artifactTypes, desc.ArtifactType)
+		})
 	}
 
-	referrers = slices.DeleteFunc(referrers, func(desc ocispec.Descriptor) bool {
-		return !slices.Contains(artifactTypes, desc.ArtifactType)
-	})
+	// report the referrers.
+	if len(referrers) == 0 {
+		return nil
+	}
 	return fn(referrers)
 }
 
