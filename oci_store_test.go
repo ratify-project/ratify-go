@@ -23,6 +23,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/content"
 )
@@ -214,6 +215,118 @@ func TestOCIStore_ListReferrers(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("OCIStore.ListReferrers() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOCIStore_FetchBlobContent(t *testing.T) {
+	ctx := context.Background()
+	fsys := os.DirFS("testdata/oci_store/hello")
+	store, err := NewOCIStoreFromFS(ctx, "hello", fsys)
+	if err != nil {
+		t.Fatalf("NewOCIStoreFromFS() error = %v, want nil", err)
+	}
+	tests := []struct {
+		name    string
+		desc    ocispec.Descriptor
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name: "fetch blob",
+			desc: ocispec.Descriptor{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    "sha256:b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+				Size:      4,
+			},
+			want: []byte("foo\n"),
+		},
+		{
+			name: "non-existing blob",
+			desc: ocispec.Descriptor{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+				Size:      0,
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := store.FetchBlobContent(ctx, "", tt.desc)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("OCIStore.FetchBlobContent() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("OCIStore.FetchBlobContent() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOCIStore_FetchImageManifest(t *testing.T) {
+	ctx := context.Background()
+	fsys := os.DirFS("testdata/oci_store/hello")
+	store, err := NewOCIStoreFromFS(ctx, "hello", fsys)
+	if err != nil {
+		t.Fatalf("NewOCIStoreFromFS() error = %v, want nil", err)
+	}
+	tests := []struct {
+		name    string
+		desc    ocispec.Descriptor
+		want    *ocispec.Manifest
+		wantErr bool
+	}{
+		{
+			name: "fetch manifest",
+			desc: ocispec.Descriptor{
+				MediaType: "application/vnd.oci.image.manifest.v1+json",
+				Digest:    "sha256:2b858809d6fd3d63a2e64e8418a0d5883aec3e24e4fe6346370f09e043763b83",
+				Size:      588,
+			},
+			want: &ocispec.Manifest{
+				Versioned: specs.Versioned{
+					SchemaVersion: 2,
+				},
+				MediaType:    "application/vnd.oci.image.manifest.v1+json",
+				ArtifactType: "application/vnd.unknown.artifact.v1",
+				Config:       ocispec.DescriptorEmptyJSON,
+				Layers: []ocispec.Descriptor{
+					{
+						MediaType: "application/vnd.oci.image.layer.v1.tar",
+						Digest:    "sha256:a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447",
+						Size:      12,
+						Annotations: map[string]string{
+							ocispec.AnnotationTitle: "hello.txt",
+						},
+					},
+				},
+				Annotations: map[string]string{
+					ocispec.AnnotationCreated: "2025-01-22T09:54:41Z",
+				},
+			},
+		},
+		{
+			name: "non-existing manifest",
+			desc: ocispec.Descriptor{
+				MediaType: "application/vnd.oci.image.manifest.v1+json",
+				Digest:    "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+				Size:      0,
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := store.FetchImageManifest(ctx, "", tt.desc)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("OCIStore.FetchImageManifest() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("OCIStore.FetchImageManifest() = %v, want %v", got, tt.want)
 			}
 		})
 	}
