@@ -17,13 +17,9 @@ package ratify
 
 import (
 	"context"
-	"fmt"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
-
-// registeredVerifiers saves the registered verifier factories.
-var registeredVerifiers map[string]func(NewVerifierOptions) (Verifier, error)
 
 // Verifier is an interface that defines methods to verify an artifact
 // associated with a subject.
@@ -76,47 +72,4 @@ type VerificationResult struct {
 	// Detail is additional information that can be used to provide more context
 	// about the verification result. Optional.
 	Detail any
-}
-
-// NewVerifierOptions represents the options to create a verifier.
-type NewVerifierOptions struct {
-	// Name is the unique identifier of a verifier instantce. Required.
-	Name string
-
-	// Type represents a specific implementation of a verifier. Required.
-	// Note: there could be multiple verifiers of the same type with different
-	//       names.
-	Type string
-
-	// Parameters is additional parameters of the verifier. Optional.
-	Parameters any
-}
-
-// RegisterVerifier registers a verifier factory to the system.
-func RegisterVerifier(verifierType string, create func(NewVerifierOptions) (Verifier, error)) {
-	if verifierType == "" {
-		panic("verifier type cannot be empty")
-	}
-	if create == nil {
-		panic("verifier factory cannot be nil")
-	}
-	if registeredVerifiers == nil {
-		registeredVerifiers = make(map[string]func(NewVerifierOptions) (Verifier, error))
-	}
-	if _, registered := registeredVerifiers[verifierType]; registered {
-		panic(fmt.Sprintf("verifier factory named %s already registered", verifierType))
-	}
-	registeredVerifiers[verifierType] = create
-}
-
-// NewVerifier creates a verifier instance if it belongs to a registered type.
-func NewVerifier(opts NewVerifierOptions) (Verifier, error) {
-	if opts.Name == "" || opts.Type == "" {
-		return nil, fmt.Errorf("name or type is not provided in the verifier options")
-	}
-	verifierFactory, ok := registeredVerifiers[opts.Type]
-	if !ok {
-		return nil, fmt.Errorf("verifier factory of type %s is not registered", opts.Type)
-	}
-	return verifierFactory(opts)
 }
