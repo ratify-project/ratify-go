@@ -19,6 +19,8 @@ import (
 	"context"
 	"os"
 	"reflect"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
@@ -253,7 +255,7 @@ func TestOCIStore_ListReferrers(t *testing.T) {
 		{
 			name: "list all referrers",
 			ref:  "v1",
-			want: []ocispec.Descriptor{fooDesc, barDesc},
+			want: []ocispec.Descriptor{barDesc, fooDesc},
 		},
 		{
 			name:          "list referrers of certain type",
@@ -295,6 +297,9 @@ func TestOCIStore_ListReferrers(t *testing.T) {
 			if fnCount > 1 {
 				t.Errorf("OCIStore.ListReferrers() count(fn) = %v, want 1", fnCount)
 			}
+			slices.SortFunc(got, func(a, b ocispec.Descriptor) int {
+				return strings.Compare(string(a.Digest), string(b.Digest))
+			})
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("OCIStore.ListReferrers() = %v, want %v", got, tt.want)
 			}
