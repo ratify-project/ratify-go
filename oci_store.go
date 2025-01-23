@@ -51,7 +51,7 @@ func NewOCIStoreFromFS(ctx context.Context, name string, fsys fs.FS) (*OCIStore,
 
 // NewOCIStoreFromTar creates a new [OCIStore] from the given tarball in OCI
 // image layout.
-func NewOCIStoreFromTar(ctx context.Context, name string, path string) (*OCIStore, error) {
+func NewOCIStoreFromTar(ctx context.Context, name, path string) (*OCIStore, error) {
 	store, err := oci.NewFromTar(ctx, path)
 	if err != nil {
 		return nil, err
