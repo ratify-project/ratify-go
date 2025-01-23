@@ -30,7 +30,7 @@ import (
 	"oras.land/oras-go/v2/registry"
 )
 
-// OCIStore is a store implementation based on OCI image layout.
+// OCIStore is a read-only store implementation based on OCI image layout.
 type OCIStore struct {
 	name  string
 	store *oci.ReadOnlyStore
