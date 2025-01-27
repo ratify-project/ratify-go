@@ -129,8 +129,7 @@ func (s *OCIStore) FetchBlob(ctx context.Context, _ string, desc ocispec.Descrip
 	return content.FetchAll(ctx, s.store, desc)
 }
 
-// FetchManifest returns the referenced image manifest as given by the
-// descriptor.
+// FetchManifest returns the referenced manifest as given by the descriptor.
 func (s *OCIStore) FetchManifest(ctx context.Context, _ string, desc ocispec.Descriptor) ([]byte, error) {
 	return content.FetchAll(ctx, s.store, desc)
 }
