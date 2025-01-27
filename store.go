@@ -41,7 +41,6 @@ type Store interface {
 	// SBoMs.
 	FetchBlob(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error)
 
-	// FetchManifest returns the referenced image manifest as given by the
-	// descriptor.
+	// FetchManifest returns the referenced manifest as given by the descriptor.
 	FetchManifest(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error)
 }
