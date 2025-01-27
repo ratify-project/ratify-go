@@ -17,9 +17,7 @@ package ratify
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"slices"
 
@@ -39,6 +37,10 @@ type OCIStore struct {
 // NewOCIStoreFromFS creates a new [OCIStore] from the given filesystem in OCI
 // image layout.
 func NewOCIStoreFromFS(ctx context.Context, name string, fsys fs.FS) (*OCIStore, error) {
+	if name == "" {
+		return nil, errStoreNameRequired
+	}
+
 	store, err := oci.NewFromFS(ctx, fsys)
 	if err != nil {
 		return nil, err
@@ -52,6 +54,10 @@ func NewOCIStoreFromFS(ctx context.Context, name string, fsys fs.FS) (*OCIStore,
 // NewOCIStoreFromTar creates a new [OCIStore] from the given tarball in OCI
 // image layout.
 func NewOCIStoreFromTar(ctx context.Context, name, path string) (*OCIStore, error) {
+	if name == "" {
+		return nil, errStoreNameRequired
+	}
+
 	store, err := oci.NewFromTar(ctx, path)
 	if err != nil {
 		return nil, err
@@ -119,20 +125,12 @@ func (s *OCIStore) ListReferrers(ctx context.Context, ref string, artifactTypes 
 }
 
 // FetchBlobContent returns the blob by the given reference.
-func (s *OCIStore) FetchBlobContent(ctx context.Context, _ string, desc ocispec.Descriptor) ([]byte, error) {
+func (s *OCIStore) FetchBlob(ctx context.Context, _ string, desc ocispec.Descriptor) ([]byte, error) {
 	return content.FetchAll(ctx, s.store, desc)
 }
 
-// FetchImageManifest returns the referenced image manifest as given by the
+// FetchManifest returns the referenced image manifest as given by the
 // descriptor.
-func (s *OCIStore) FetchImageManifest(ctx context.Context, _ string, desc ocispec.Descriptor) (*ocispec.Manifest, error) {
-	manfiestBytes, err := content.FetchAll(ctx, s.store, desc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
-	}
-	var manifest ocispec.Manifest
-	if err := json.Unmarshal(manfiestBytes, &manifest); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal manifest: %w", err)
-	}
-	return &manifest, nil
+func (s *OCIStore) FetchManifest(ctx context.Context, _ string, desc ocispec.Descriptor) ([]byte, error) {
+	return content.FetchAll(ctx, s.store, desc)
 }
