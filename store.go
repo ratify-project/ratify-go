@@ -33,15 +33,15 @@ type Store interface {
 	// ListReferrers returns the immediate set of supply chain artifacts for the
 	// given subject reference.
 	// Note: This API supports pagination. fn should be set to handle the
-	//       underlying pagination.
+	// underlying pagination.
 	ListReferrers(ctx context.Context, ref string, artifactTypes []string, fn func(referrers []ocispec.Descriptor) error) error
 
-	// FetchBlobContent returns the blob by the given reference.
+	// FetchBlob returns the blob by the given reference.
 	// WARNING: This API is intended to use for small objects like signatures,
-	//          SBoMs.
-	FetchBlobContent(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error)
+	// SBoMs.
+	FetchBlob(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error)
 
-	// FetchImageManifest returns the referenced image manifest as given by the
+	// FetchManifest returns the referenced image manifest as given by the
 	// descriptor.
-	FetchImageManifest(ctx context.Context, repo string, desc ocispec.Descriptor) (*ocispec.Manifest, error)
+	FetchManifest(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error)
 }

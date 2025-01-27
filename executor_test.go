@@ -90,12 +90,12 @@ func (m *mockStore) ListReferrers(ctx context.Context, ref string, artifactTypes
 	return fn(referrers)
 }
 
-func (m *mockStore) FetchBlobContent(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error) {
+func (m *mockStore) FetchBlob(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *mockStore) FetchImageManifest(ctx context.Context, repo string, desc ocispec.Descriptor) (*ocispec.Manifest, error) {
-	return &ocispec.Manifest{}, nil
+func (m *mockStore) FetchManifest(ctx context.Context, repo string, desc ocispec.Descriptor) ([]byte, error) {
+	return nil, nil
 }
 
 func (m *mockStore) Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error) {

@@ -17,6 +17,7 @@ package ratify
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"reflect"
 	"slices"
@@ -30,6 +31,13 @@ import (
 	"oras.land/oras-go/v2/content"
 )
 
+func TestOCIStore(t *testing.T) {
+	var store any = &OCIStore{}
+	if _, ok := store.(Store); !ok {
+		t.Error("*OCIStore does not implement Store")
+	}
+}
+
 func TestNewOCIStoreFromFS(t *testing.T) {
 	ctx := context.Background()
 	const name = "test"
@@ -40,7 +48,7 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 				Data: []byte(`{"imageLayoutVersion":"1.0.0"}`),
 			},
 			"index.json": &fstest.MapFile{
-				Data: []byte(`{"schemaVersion":2,"manifests":[]}`),
+				Data: []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[]}`),
 			},
 		}
 		_, err := NewOCIStoreFromFS(ctx, name, fsys)
@@ -54,7 +62,14 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 		_, err := NewOCIStoreFromFS(ctx, name, fsys)
 		if err == nil {
 			t.Errorf("NewOCIStoreFromFS() error = nil, wantErr true")
-			return
+		}
+	})
+
+	t.Run("missing store name", func(t *testing.T) {
+		fsys := os.DirFS("testdata/oci_store/hello")
+		_, err := NewOCIStoreFromFS(ctx, "", fsys)
+		if err == nil {
+			t.Errorf("NewOCIStoreFromFS() error = nil, wantErr true")
 		}
 	})
 }
@@ -74,7 +89,13 @@ func TestNewOCIStoreFromTar(t *testing.T) {
 		_, err := NewOCIStoreFromTar(ctx, name, "non-existing.tar")
 		if err == nil {
 			t.Errorf("NewOCIStoreFromTar() error = nil, wantErr true")
-			return
+		}
+	})
+
+	t.Run("missing store name", func(t *testing.T) {
+		_, err := NewOCIStoreFromTar(ctx, "", "testdata/oci_store/full_ref.tar")
+		if err == nil {
+			t.Errorf("NewOCIStoreFromTar() error = nil, wantErr true")
 		}
 	})
 }
@@ -295,7 +316,7 @@ func TestOCIStore_ListReferrers(t *testing.T) {
 				return
 			}
 			if fnCount > 1 {
-				t.Errorf("OCIStore.ListReferrers() count(fn) = %v, want 1", fnCount)
+				t.Errorf("OCIStore.ListReferrers() count(fn) = %v, want < 2", fnCount)
 			}
 			slices.SortFunc(got, func(a, b ocispec.Descriptor) int {
 				return strings.Compare(string(a.Digest), string(b.Digest))
@@ -343,7 +364,7 @@ func TestOCIStore_ListReferrers_Full_Reference(t *testing.T) {
 	}
 }
 
-func TestOCIStore_FetchBlobContent(t *testing.T) {
+func TestOCIStore_FetchBlob(t *testing.T) {
 	ctx := context.Background()
 	fsys := os.DirFS("testdata/oci_store/hello")
 	store, err := NewOCIStoreFromFS(ctx, "hello", fsys)
@@ -377,59 +398,61 @@ func TestOCIStore_FetchBlobContent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := store.FetchBlobContent(ctx, "", tt.desc)
+			got, err := store.FetchBlob(ctx, "", tt.desc)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("OCIStore.FetchBlobContent() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("OCIStore.FetchBlob() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("OCIStore.FetchBlobContent() = %v, want %v", got, tt.want)
+				t.Errorf("OCIStore.FetchBlob() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestOCIStore_FetchImageManifest(t *testing.T) {
+func TestOCIStore_FetchManifest(t *testing.T) {
 	ctx := context.Background()
 	fsys := os.DirFS("testdata/oci_store/hello")
 	store, err := NewOCIStoreFromFS(ctx, "hello", fsys)
 	if err != nil {
 		t.Fatalf("NewOCIStoreFromFS() error = %v, want nil", err)
 	}
+	manifest := ocispec.Manifest{
+		Versioned: specs.Versioned{
+			SchemaVersion: 2,
+		},
+		MediaType:    "application/vnd.oci.image.manifest.v1+json",
+		ArtifactType: "application/vnd.unknown.artifact.v1",
+		Config:       ocispec.DescriptorEmptyJSON,
+		Layers: []ocispec.Descriptor{
+			{
+				MediaType: "application/vnd.oci.image.layer.v1.tar",
+				Digest:    "sha256:a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447",
+				Size:      12,
+				Annotations: map[string]string{
+					ocispec.AnnotationTitle: "hello.txt",
+				},
+			},
+		},
+		Annotations: map[string]string{
+			ocispec.AnnotationCreated: "2025-01-22T09:54:41Z",
+		},
+	}
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("failed to marshal manifest: %v", err)
+	}
+	manifestDesc := content.NewDescriptorFromBytes(manifest.MediaType, manifestBytes)
 	tests := []struct {
 		name    string
 		desc    ocispec.Descriptor
-		want    *ocispec.Manifest
+		want    []byte
 		wantErr bool
 	}{
 		{
 			name: "fetch manifest",
-			desc: ocispec.Descriptor{
-				MediaType: "application/vnd.oci.image.manifest.v1+json",
-				Digest:    "sha256:2b858809d6fd3d63a2e64e8418a0d5883aec3e24e4fe6346370f09e043763b83",
-				Size:      588,
-			},
-			want: &ocispec.Manifest{
-				Versioned: specs.Versioned{
-					SchemaVersion: 2,
-				},
-				MediaType:    "application/vnd.oci.image.manifest.v1+json",
-				ArtifactType: "application/vnd.unknown.artifact.v1",
-				Config:       ocispec.DescriptorEmptyJSON,
-				Layers: []ocispec.Descriptor{
-					{
-						MediaType: "application/vnd.oci.image.layer.v1.tar",
-						Digest:    "sha256:a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447",
-						Size:      12,
-						Annotations: map[string]string{
-							ocispec.AnnotationTitle: "hello.txt",
-						},
-					},
-				},
-				Annotations: map[string]string{
-					ocispec.AnnotationCreated: "2025-01-22T09:54:41Z",
-				},
-			},
+			desc: manifestDesc,
+			want: manifestBytes,
 		},
 		{
 			name: "non-existing manifest",
@@ -443,13 +466,13 @@ func TestOCIStore_FetchImageManifest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := store.FetchImageManifest(ctx, "", tt.desc)
+			got, err := store.FetchManifest(ctx, "", tt.desc)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("OCIStore.FetchImageManifest() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("OCIStore.FetchManifest() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("OCIStore.FetchImageManifest() = %v, want %v", got, tt.want)
+				t.Errorf("OCIStore.FetchManifest() = %v, want %v", got, tt.want)
 			}
 		})
 	}
