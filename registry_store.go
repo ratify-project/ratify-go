@@ -232,7 +232,7 @@ func (s *RegistryStore) FetchManifest(ctx context.Context, repoRef string, desc 
 
 // repository returns a new remote repository for the given reference with the
 // client set.
-func (s RegistryStore) repository(ref string) (*remote.Repository, error) {
+func (s *RegistryStore) repository(ref string) (*remote.Repository, error) {
 	repo, err := remote.NewRepository(ref)
 	if err != nil {
 		return nil, err
