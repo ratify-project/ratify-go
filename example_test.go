@@ -17,6 +17,8 @@ package ratify_test
 
 import (
 	"context"
+	"crypto/tls"
+	"net/http"
 	"testing/fstest"
 
 	"github.com/ratify-project/ratify-go"
@@ -80,6 +82,73 @@ func ExampleStoreMux() {
 	}
 	_, err = store.Resolve(ctx, "another.registry.example/test:world")
 	if err != nil {
+		panic(err)
+	}
+	// Output:
+}
+
+// ExampleStoreMux_mixRegistryStore demonstrates how to access different
+// registries with different network configurations using a single store by
+// multiplexing.
+func ExampleStoreMux_mixRegistryStore() {
+	// Create a new store multiplexer
+	mux := ratify.NewStoreMux("multiplexer")
+
+	// Create a global registry store with default options.
+	// Developers should replace the default options with actual configuration.
+	store, err := ratify.NewRegistryStore("registry", ratify.RegistryStoreOptions{})
+	if err != nil {
+		panic(err)
+	}
+	if err := mux.RegisterFallback(store); err != nil {
+		panic(err)
+	}
+
+	// Create a registry store for local registry.
+	// A local registry is accessed over plain HTTP unlike the global registry.
+	store, err = ratify.NewRegistryStore("local", ratify.RegistryStoreOptions{
+		PlainHTTP: true,
+	})
+	if err != nil {
+		panic(err)
+	}
+	if err := mux.Register("localhost:5000", store); err != nil {
+		panic(err)
+	}
+
+	// Create a registry store with client certificate authentication.
+	store, err = ratify.NewRegistryStore("cert", ratify.RegistryStoreOptions{
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					Certificates: []tls.Certificate{
+						// add client certificate with private key
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	if err := mux.Register("private.registry.example", store); err != nil {
+		panic(err)
+	}
+
+	// Create a registry store for an insecure registry.
+	store, err = ratify.NewRegistryStore("insecure", ratify.RegistryStoreOptions{
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	if err := mux.Register("insecure.registry.example", store); err != nil {
 		panic(err)
 	}
 	// Output:
