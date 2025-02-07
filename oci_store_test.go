@@ -40,7 +40,6 @@ func TestOCIStore(t *testing.T) {
 
 func TestNewOCIStoreFromFS(t *testing.T) {
 	ctx := context.Background()
-	const name = "test"
 
 	t.Run("valid folder", func(t *testing.T) {
 		fsys := fstest.MapFS{
@@ -51,7 +50,7 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 				Data: []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[]}`),
 			},
 		}
-		_, err := NewOCIStoreFromFS(ctx, name, fsys)
+		_, err := NewOCIStoreFromFS(ctx, fsys)
 		if err != nil {
 			t.Errorf("NewOCIStoreFromFS() error = %v, wantErr false", err)
 		}
@@ -59,15 +58,7 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 
 	t.Run("non-OCI folder", func(t *testing.T) {
 		var fsys fstest.MapFS
-		_, err := NewOCIStoreFromFS(ctx, name, fsys)
-		if err == nil {
-			t.Errorf("NewOCIStoreFromFS() error = nil, wantErr true")
-		}
-	})
-
-	t.Run("missing store name", func(t *testing.T) {
-		fsys := os.DirFS("testdata/oci_store/hello")
-		_, err := NewOCIStoreFromFS(ctx, "", fsys)
+		_, err := NewOCIStoreFromFS(ctx, fsys)
 		if err == nil {
 			t.Errorf("NewOCIStoreFromFS() error = nil, wantErr true")
 		}
@@ -76,47 +67,26 @@ func TestNewOCIStoreFromFS(t *testing.T) {
 
 func TestNewOCIStoreFromTar(t *testing.T) {
 	ctx := context.Background()
-	const name = "test"
 
 	t.Run("valid tar", func(t *testing.T) {
-		_, err := NewOCIStoreFromTar(ctx, name, "testdata/oci_store/full_ref.tar")
+		_, err := NewOCIStoreFromTar(ctx, "testdata/oci_store/full_ref.tar")
 		if err != nil {
 			t.Errorf("NewOCIStoreFromTar() error = %v, wantErr false", err)
 		}
 	})
 
 	t.Run("non-existing path", func(t *testing.T) {
-		_, err := NewOCIStoreFromTar(ctx, name, "non-existing.tar")
+		_, err := NewOCIStoreFromTar(ctx, "non-existing.tar")
 		if err == nil {
 			t.Errorf("NewOCIStoreFromTar() error = nil, wantErr true")
 		}
 	})
-
-	t.Run("missing store name", func(t *testing.T) {
-		_, err := NewOCIStoreFromTar(ctx, "", "testdata/oci_store/full_ref.tar")
-		if err == nil {
-			t.Errorf("NewOCIStoreFromTar() error = nil, wantErr true")
-		}
-	})
-}
-
-func TestOCIStore_Name(t *testing.T) {
-	ctx := context.Background()
-	fsys := os.DirFS("testdata/oci_store/hello")
-	want := "test"
-	s, err := NewOCIStoreFromFS(ctx, want, fsys)
-	if err != nil {
-		t.Fatalf("NewOCIStoreFromFS() error = %v, want nil", err)
-	}
-	if got := s.Name(); got != want {
-		t.Errorf("OCIStore.Name() = %v, want %v", got, want)
-	}
 }
 
 func TestOCIStore_Resolve(t *testing.T) {
 	ctx := context.Background()
 	fsys := os.DirFS("testdata/oci_store/hello")
-	store, err := NewOCIStoreFromFS(ctx, "hello", fsys)
+	store, err := NewOCIStoreFromFS(ctx, fsys)
 	if err != nil {
 		t.Fatalf("NewOCIStoreFromFS() error = %v, want nil", err)
 	}
@@ -179,7 +149,7 @@ func TestOCIStore_Resolve(t *testing.T) {
 
 func TestOCIStore_Resolve_Full_Reference(t *testing.T) {
 	ctx := context.Background()
-	store, err := NewOCIStoreFromTar(ctx, "hello", "testdata/oci_store/full_ref.tar")
+	store, err := NewOCIStoreFromTar(ctx, "testdata/oci_store/full_ref.tar")
 	if err != nil {
 		t.Fatalf("NewOCIStoreFromTar() error = %v, want nil", err)
 	}
@@ -243,7 +213,7 @@ func TestOCIStore_Resolve_Full_Reference(t *testing.T) {
 func TestOCIStore_ListReferrers(t *testing.T) {
 	ctx := context.Background()
 	fsys := os.DirFS("testdata/oci_store/hello")
-	store, err := NewOCIStoreFromFS(ctx, "hello", fsys)
+	store, err := NewOCIStoreFromFS(ctx, fsys)
 	if err != nil {
 		t.Fatalf("NewOCIStoreFromFS() error = %v, want nil", err)
 	}
@@ -330,7 +300,7 @@ func TestOCIStore_ListReferrers(t *testing.T) {
 
 func TestOCIStore_ListReferrers_Full_Reference(t *testing.T) {
 	ctx := context.Background()
-	store, err := NewOCIStoreFromTar(ctx, "hello", "testdata/oci_store/full_ref.tar")
+	store, err := NewOCIStoreFromTar(ctx, "testdata/oci_store/full_ref.tar")
 	if err != nil {
 		t.Fatalf("NewOCIStoreFromTar() error = %v, want nil", err)
 	}
@@ -367,7 +337,7 @@ func TestOCIStore_ListReferrers_Full_Reference(t *testing.T) {
 func TestOCIStore_FetchBlob(t *testing.T) {
 	ctx := context.Background()
 	fsys := os.DirFS("testdata/oci_store/hello")
-	store, err := NewOCIStoreFromFS(ctx, "hello", fsys)
+	store, err := NewOCIStoreFromFS(ctx, fsys)
 	if err != nil {
 		t.Fatalf("NewOCIStoreFromFS() error = %v, want nil", err)
 	}
@@ -413,7 +383,7 @@ func TestOCIStore_FetchBlob(t *testing.T) {
 func TestOCIStore_FetchManifest(t *testing.T) {
 	ctx := context.Background()
 	fsys := os.DirFS("testdata/oci_store/hello")
-	store, err := NewOCIStoreFromFS(ctx, "hello", fsys)
+	store, err := NewOCIStoreFromFS(ctx, fsys)
 	if err != nil {
 		t.Fatalf("NewOCIStoreFromFS() error = %v, want nil", err)
 	}

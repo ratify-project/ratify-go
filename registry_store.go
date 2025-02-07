@@ -83,20 +83,14 @@ type RegistryStoreOptions struct {
 
 // RegistryStore is a store that interacts with a remote registry.
 type RegistryStore struct {
-	name             string
 	client           *auth.Client
 	plainHTTP        bool
 	maxBlobBytes     int64
 	maxManifestBytes int64
 }
 
-// NewRegistryStore creates a new [RegistryStore] with the given name and
-// options.
-func NewRegistryStore(name string, opts RegistryStoreOptions) (*RegistryStore, error) {
-	if name == "" {
-		return nil, errStoreNameRequired
-	}
-
+// NewRegistryStore creates a new [RegistryStore] with options.
+func NewRegistryStore(opts RegistryStoreOptions) (*RegistryStore, error) {
 	client := &auth.Client{
 		Client:   opts.HTTPClient,
 		Cache:    auth.NewCache(),
@@ -121,17 +115,11 @@ func NewRegistryStore(name string, opts RegistryStoreOptions) (*RegistryStore, e
 	}
 
 	return &RegistryStore{
-		name:             name,
 		client:           client,
 		plainHTTP:        opts.PlainHTTP,
 		maxBlobBytes:     maxBlobBytes,
 		maxManifestBytes: maxManifestBytes,
 	}, nil
-}
-
-// Name is the name of the store.
-func (s *RegistryStore) Name() string {
-	return s.name
 }
 
 // Resolve resolves to a descriptor for the given artifact reference.

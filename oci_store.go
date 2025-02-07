@@ -30,47 +30,31 @@ import (
 
 // OCIStore is a read-only store implementation based on OCI image layout.
 type OCIStore struct {
-	name  string
 	store *oci.ReadOnlyStore
 }
 
 // NewOCIStoreFromFS creates a new [OCIStore] from the given filesystem in OCI
 // image layout.
-func NewOCIStoreFromFS(ctx context.Context, name string, fsys fs.FS) (*OCIStore, error) {
-	if name == "" {
-		return nil, errStoreNameRequired
-	}
-
+func NewOCIStoreFromFS(ctx context.Context, fsys fs.FS) (*OCIStore, error) {
 	store, err := oci.NewFromFS(ctx, fsys)
 	if err != nil {
 		return nil, err
 	}
 	return &OCIStore{
-		name:  name,
 		store: store,
 	}, nil
 }
 
 // NewOCIStoreFromTar creates a new [OCIStore] from the given tarball in OCI
 // image layout.
-func NewOCIStoreFromTar(ctx context.Context, name, path string) (*OCIStore, error) {
-	if name == "" {
-		return nil, errStoreNameRequired
-	}
-
+func NewOCIStoreFromTar(ctx context.Context, path string) (*OCIStore, error) {
 	store, err := oci.NewFromTar(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 	return &OCIStore{
-		name:  name,
 		store: store,
 	}, nil
-}
-
-// Name is the name of the store.
-func (s *OCIStore) Name() string {
-	return s.name
 }
 
 // Resolve resolves to a descriptor for the given artifact reference.

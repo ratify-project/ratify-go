@@ -45,7 +45,7 @@ func ExampleStoreMux() {
 				Data: []byte(`{"imageLayoutVersion": "1.0.0"}`),
 			},
 		}
-		store, err := ratify.NewOCIStoreFromFS(ctx, tag, fsys)
+		store, err := ratify.NewOCIStoreFromFS(ctx, fsys)
 		if err != nil {
 			panic(err)
 		}
@@ -53,7 +53,7 @@ func ExampleStoreMux() {
 	}
 
 	// Create a new store multiplexer
-	store := ratify.NewStoreMux("multiplexer")
+	store := ratify.NewStoreMux()
 
 	// Register store with exact repository name match.
 	store.Register("registry.example/test", stores[0])
@@ -92,11 +92,11 @@ func ExampleStoreMux() {
 // multiplexing.
 func ExampleStoreMux_mixRegistryStore() {
 	// Create a new store multiplexer
-	mux := ratify.NewStoreMux("multiplexer")
+	mux := ratify.NewStoreMux()
 
 	// Create a global registry store with default options.
 	// Developers should replace the default options with actual configuration.
-	store, err := ratify.NewRegistryStore("registry", ratify.RegistryStoreOptions{})
+	store, err := ratify.NewRegistryStore(ratify.RegistryStoreOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -106,7 +106,7 @@ func ExampleStoreMux_mixRegistryStore() {
 
 	// Create a registry store for local registry.
 	// A local registry is accessed over plain HTTP unlike the global registry.
-	store, err = ratify.NewRegistryStore("local", ratify.RegistryStoreOptions{
+	store, err = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
 		PlainHTTP: true,
 	})
 	if err != nil {
@@ -117,7 +117,7 @@ func ExampleStoreMux_mixRegistryStore() {
 	}
 
 	// Create a registry store with client certificate authentication.
-	store, err = ratify.NewRegistryStore("cert", ratify.RegistryStoreOptions{
+	store, err = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
 		HTTPClient: &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
@@ -136,7 +136,7 @@ func ExampleStoreMux_mixRegistryStore() {
 	}
 
 	// Create a registry store for an insecure registry.
-	store, err = ratify.NewRegistryStore("insecure", ratify.RegistryStoreOptions{
+	store, err = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
 		HTTPClient: &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{

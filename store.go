@@ -24,9 +24,6 @@ import (
 // Store is an interface that defines methods to query the graph of supply chain
 // content including its related content
 type Store interface {
-	// Name is the name of the store.
-	Name() string
-
 	// Resolve resolves to a descriptor for the given artifact reference.
 	Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error)
 
