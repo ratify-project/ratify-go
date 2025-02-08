@@ -90,7 +90,7 @@ type RegistryStore struct {
 }
 
 // NewRegistryStore creates a new [RegistryStore] with options.
-func NewRegistryStore(opts RegistryStoreOptions) (*RegistryStore, error) {
+func NewRegistryStore(opts RegistryStoreOptions) *RegistryStore {
 	client := &auth.Client{
 		Client:   opts.HTTPClient,
 		Cache:    auth.NewCache(),
@@ -119,7 +119,7 @@ func NewRegistryStore(opts RegistryStoreOptions) (*RegistryStore, error) {
 		plainHTTP:        opts.PlainHTTP,
 		maxBlobBytes:     maxBlobBytes,
 		maxManifestBytes: maxManifestBytes,
-	}, nil
+	}
 }
 
 // Resolve resolves to a descriptor for the given artifact reference.

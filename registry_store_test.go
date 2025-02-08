@@ -45,10 +45,7 @@ func TestRegistryStore(t *testing.T) {
 
 func TestNewRegistryStore(t *testing.T) {
 	t.Run("create store with default settings", func(t *testing.T) {
-		s, err := NewRegistryStore(RegistryStoreOptions{})
-		if err != nil {
-			t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-		}
+		s := NewRegistryStore(RegistryStoreOptions{})
 		if s.client.Client != nil {
 			t.Errorf("RegistryStore.client.Client = %v, want nil", s.client.Client)
 		}
@@ -78,10 +75,7 @@ func TestNewRegistryStore(t *testing.T) {
 			MaxBlobBytes:       2048,
 			MaxManifestBytes:   1024,
 		}
-		s, err := NewRegistryStore(opts)
-		if err != nil {
-			t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-		}
+		s := NewRegistryStore(opts)
 		if s.client.Client != opts.HTTPClient {
 			t.Errorf("RegistryStore.client.Client = %v, want %v", s.client.Client, opts.HTTPClient)
 		}
@@ -140,12 +134,9 @@ func TestRegistryStore_Resolve(t *testing.T) {
 		t.Fatalf("invalid test http server: %v", err)
 	}
 	repoName := uri.Host + "/test"
-	store, err := NewRegistryStore(RegistryStoreOptions{
+	store := NewRegistryStore(RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
 	ctx := context.Background()
 
 	tests := []struct {
@@ -305,12 +296,9 @@ func TestRegistryStore_ListReferrers(t *testing.T) {
 		t.Fatalf("invalid test http server: %v", err)
 	}
 	repoName := uri.Host + "/test"
-	store, err := NewRegistryStore(RegistryStoreOptions{
+	store := NewRegistryStore(RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
 	ctx := context.Background()
 
 	tests := []struct {
@@ -424,12 +412,9 @@ func TestRegistryStore_FetchBlob(t *testing.T) {
 		t.Fatalf("invalid test http server: %v", err)
 	}
 	repoName := uri.Host + "/test"
-	store, err := NewRegistryStore(RegistryStoreOptions{
+	store := NewRegistryStore(RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
 	ctx := context.Background()
 
 	tests := []struct {
@@ -543,12 +528,9 @@ func TestRegistryStore_FetchManifest(t *testing.T) {
 		t.Fatalf("invalid test http server: %v", err)
 	}
 	repoName := uri.Host + "/test"
-	store, err := NewRegistryStore(RegistryStoreOptions{
+	store := NewRegistryStore(RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
 	ctx := context.Background()
 
 	tests := []struct {

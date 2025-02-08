@@ -96,28 +96,22 @@ func ExampleStoreMux_mixRegistryStore() {
 
 	// Create a global registry store with default options.
 	// Developers should replace the default options with actual configuration.
-	store, err := ratify.NewRegistryStore(ratify.RegistryStoreOptions{})
-	if err != nil {
-		panic(err)
-	}
+	store := ratify.NewRegistryStore(ratify.RegistryStoreOptions{})
 	if err := mux.RegisterFallback(store); err != nil {
 		panic(err)
 	}
 
 	// Create a registry store for local registry.
 	// A local registry is accessed over plain HTTP unlike the global registry.
-	store, err = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
+	store = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		panic(err)
-	}
 	if err := mux.Register("localhost:5000", store); err != nil {
 		panic(err)
 	}
 
 	// Create a registry store with client certificate authentication.
-	store, err = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
+	store = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
 		HTTPClient: &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
@@ -128,15 +122,12 @@ func ExampleStoreMux_mixRegistryStore() {
 			},
 		},
 	})
-	if err != nil {
-		panic(err)
-	}
 	if err := mux.Register("private.registry.example", store); err != nil {
 		panic(err)
 	}
 
 	// Create a registry store for an insecure registry.
-	store, err = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
+	store = ratify.NewRegistryStore(ratify.RegistryStoreOptions{
 		HTTPClient: &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
@@ -145,9 +136,6 @@ func ExampleStoreMux_mixRegistryStore() {
 			},
 		},
 	})
-	if err != nil {
-		panic(err)
-	}
 	if err := mux.Register("insecure.registry.example", store); err != nil {
 		panic(err)
 	}
