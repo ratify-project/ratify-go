@@ -200,7 +200,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			ArtifactDescriptor: artifact,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to verify artifact %s in repo %s with verifier %s: %w", subjectDesc.Digest, repo, verifier.Name(), err)
+			return nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
 		}
 
 		verifierReports = append(verifierReports, verifierReport)

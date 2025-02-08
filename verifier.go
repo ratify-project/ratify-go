@@ -43,8 +43,8 @@ type VerifyOptions struct {
 	// Store is the store to access the artifacts. Required.
 	Store Store
 
-	// Repository represents the complete repository name of the subject,
-	// including the registry prefix.
+	// Repository represents the fully qualified repository name of the subject,
+	// including the registry name.
 	// Required.
 	Repository string
 
