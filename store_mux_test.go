@@ -25,15 +25,10 @@ import (
 
 type testStore struct {
 	t             *testing.T
-	name          string
 	resolve       func(*testing.T, string) (ocispec.Descriptor, error)
 	listReferrers func(*testing.T, string, []string, func([]ocispec.Descriptor) error) error
 	fetchBlob     func(*testing.T, string, ocispec.Descriptor) ([]byte, error)
 	fetchManifest func(*testing.T, string, ocispec.Descriptor) ([]byte, error)
-}
-
-func (s *testStore) Name() string {
-	return s.name
 }
 
 func (s *testStore) Resolve(ctx context.Context, ref string) (ocispec.Descriptor, error) {
@@ -71,14 +66,6 @@ func TestStoreMux(t *testing.T) {
 	}
 }
 
-func TestStoreMux_Name(t *testing.T) {
-	want := "test"
-	s := NewStoreMux(want)
-	if got := s.Name(); got != want {
-		t.Errorf("StoreMux.Name() = %v, want %v", got, want)
-	}
-}
-
 func TestStoreMux_Resolve(t *testing.T) {
 	ctx := context.Background()
 	const pattern = "registry.test"
@@ -106,7 +93,7 @@ func TestStoreMux_Resolve(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := NewStoreMux("hello")
+			store := NewStoreMux()
 			if err := store.Register(pattern, &testStore{
 				t:       t,
 				resolve: tt.resolve,
@@ -152,7 +139,7 @@ func TestStoreMux_ListReferrers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := NewStoreMux("hello")
+			store := NewStoreMux()
 			if err := store.Register(pattern, &testStore{
 				t:             t,
 				listReferrers: tt.listReferrers,
@@ -201,7 +188,7 @@ func TestStoreMux_FetchBlob(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := NewStoreMux("hello")
+			store := NewStoreMux()
 			if err := store.Register(pattern, &testStore{
 				t:         t,
 				fetchBlob: tt.fetchBlob,
@@ -247,7 +234,7 @@ func TestStoreMux_FetchManifest(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := NewStoreMux("hello")
+			store := NewStoreMux()
 			if err := store.Register(pattern, &testStore{
 				t:             t,
 				fetchManifest: tt.fetchManifest,
@@ -371,7 +358,7 @@ func TestStoreMux_Register(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := NewStoreMux("hello")
+			store := NewStoreMux()
 			want := &testStore{t: t}
 			if err := store.Register(tt.pattern, want); (err != nil) != tt.wantErr {
 				t.Errorf("StoreMux.Register() error = %v, wantErr %v", err, tt.wantErr)
@@ -393,7 +380,7 @@ func TestStoreMux_Register(t *testing.T) {
 	}
 
 	t.Run("nil store", func(t *testing.T) {
-		store := NewStoreMux("hello")
+		store := NewStoreMux()
 		if err := store.Register("registry.test", nil); err == nil {
 			t.Error("StoreMux.Register() error = nil, wantErr")
 		}
@@ -402,7 +389,7 @@ func TestStoreMux_Register(t *testing.T) {
 
 func TestStoreMux_RegisterFallback(t *testing.T) {
 	t.Run("success fallback", func(t *testing.T) {
-		store := NewStoreMux("hello")
+		store := NewStoreMux()
 		want := &testStore{t: t}
 		if err := store.RegisterFallback(want); err != nil {
 			t.Errorf("StoreMux.RegisterFallback() error = %v, wantErr nil", err)
@@ -419,7 +406,7 @@ func TestStoreMux_RegisterFallback(t *testing.T) {
 	})
 
 	t.Run("nil store", func(t *testing.T) {
-		store := NewStoreMux("hello")
+		store := NewStoreMux()
 		if err := store.RegisterFallback(nil); err == nil {
 			t.Error("StoreMux.RegisterFallback() error = nil, wantErr")
 		}
