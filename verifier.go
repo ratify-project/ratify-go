@@ -43,9 +43,10 @@ type VerifyOptions struct {
 	// Store is the store to access the artifacts. Required.
 	Store Store
 
-	// Subject is the subject reference of the artifact being verified.
+	// Repository represents the fully qualified repository name of the subject,
+	// including the registry name.
 	// Required.
-	Subject string
+	Repository string
 
 	// SubjectDescriptor is the descriptor of the subject being verified.
 	// Required.

@@ -116,6 +116,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	if err != nil {
 		return nil, err
 	}
+	repo := ref.Registry + "/" + ref.Repository
 
 	// TODO: Implement a worker pool to validate artifacts concurrently.
 	// TODO: Enforce check on the stack size.
@@ -130,7 +131,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	for taskStack.Len() > 0 {
 		task := taskStack.Pop()
 
-		newTasks, err := e.verifySubjectAgainstReferrers(ctx, task, opts.ReferenceTypes)
+		newTasks, err := e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate artifact %v: %w", task.artifact, err)
 		}
@@ -144,7 +145,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
-func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, referenceTypes []string) ([]*executorTask, error) {
+func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string) ([]*executorTask, error) {
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.
@@ -154,7 +155,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	var artifactReports []*ValidationReport
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
-			results, err := e.verifyArtifact(ctx, artifact, task.artifactDesc, referrer)
+			results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer)
 			if err != nil {
 				return err
 			}
@@ -185,7 +186,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
-func (e *Executor) verifyArtifact(ctx context.Context, subject string, subjectDesc, artifact ocispec.Descriptor) ([]*VerificationResult, error) {
+func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor) ([]*VerificationResult, error) {
 	var verifierReports []*VerificationResult
 
 	for _, verifier := range e.Verifiers {
@@ -194,12 +195,12 @@ func (e *Executor) verifyArtifact(ctx context.Context, subject string, subjectDe
 		}
 		verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
 			Store:              e.Store,
-			Subject:            subject,
+			Repository:         repo,
 			SubjectDescriptor:  subjectDesc,
 			ArtifactDescriptor: artifact,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to verify artifact %s with verifier %s: %w", subject, verifier.Name(), err)
+			return nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
 		}
 
 		verifierReports = append(verifierReports, verifierReport)
