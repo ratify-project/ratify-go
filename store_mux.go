@@ -55,7 +55,6 @@ import (
 // precedence. For example, if both "registry.example/foo" and "registry.example"
 // are registered, then the former takes precedence.
 type StoreMux struct {
-	name       string
 	wildcard   map[string]Store
 	registry   map[string]Store
 	repository map[string]Store
@@ -63,15 +62,8 @@ type StoreMux struct {
 }
 
 // NewStoreMux creates a new [StoreMux].
-func NewStoreMux(name string) *StoreMux {
-	return &StoreMux{
-		name: name,
-	}
-}
-
-// Name is the name of the store.
-func (s *StoreMux) Name() string {
-	return s.name
+func NewStoreMux() *StoreMux {
+	return &StoreMux{}
 }
 
 // Resolve resolves to a descriptor for the given artifact reference.

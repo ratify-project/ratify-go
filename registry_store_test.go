@@ -44,16 +44,8 @@ func TestRegistryStore(t *testing.T) {
 }
 
 func TestNewRegistryStore(t *testing.T) {
-	const name = "test"
-
 	t.Run("create store with default settings", func(t *testing.T) {
-		s, err := NewRegistryStore(name, RegistryStoreOptions{})
-		if err != nil {
-			t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-		}
-		if s.name != name {
-			t.Errorf("RegistryStore.name = %v, want %v", s.name, name)
-		}
+		s := NewRegistryStore(RegistryStoreOptions{})
 		if s.client.Client != nil {
 			t.Errorf("RegistryStore.client.Client = %v, want nil", s.client.Client)
 		}
@@ -83,13 +75,7 @@ func TestNewRegistryStore(t *testing.T) {
 			MaxBlobBytes:       2048,
 			MaxManifestBytes:   1024,
 		}
-		s, err := NewRegistryStore(name, opts)
-		if err != nil {
-			t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-		}
-		if s.name != name {
-			t.Errorf("RegistryStore.name = %v, want %v", s.name, name)
-		}
+		s := NewRegistryStore(opts)
 		if s.client.Client != opts.HTTPClient {
 			t.Errorf("RegistryStore.client.Client = %v, want %v", s.client.Client, opts.HTTPClient)
 		}
@@ -109,25 +95,6 @@ func TestNewRegistryStore(t *testing.T) {
 			t.Errorf("RegistryStore.maxManifestBytes = %v, want %v", s.maxManifestBytes, opts.MaxManifestBytes)
 		}
 	})
-
-	t.Run("missing store name", func(t *testing.T) {
-		_, err := NewRegistryStore("", RegistryStoreOptions{})
-		if err == nil {
-			t.Errorf("NewRegistryStore() error = nil, wantErr true")
-		}
-	})
-}
-
-func TestRegistryStore_Name(t *testing.T) {
-	want := "test"
-
-	s, err := NewRegistryStore(want, RegistryStoreOptions{})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
-	if got := s.Name(); got != want {
-		t.Errorf("RegistryStore.Name() = %v, want %v", got, want)
-	}
 }
 
 func TestRegistryStore_Resolve(t *testing.T) {
@@ -167,12 +134,9 @@ func TestRegistryStore_Resolve(t *testing.T) {
 		t.Fatalf("invalid test http server: %v", err)
 	}
 	repoName := uri.Host + "/test"
-	store, err := NewRegistryStore("hello", RegistryStoreOptions{
+	store := NewRegistryStore(RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
 	ctx := context.Background()
 
 	tests := []struct {
@@ -332,12 +296,9 @@ func TestRegistryStore_ListReferrers(t *testing.T) {
 		t.Fatalf("invalid test http server: %v", err)
 	}
 	repoName := uri.Host + "/test"
-	store, err := NewRegistryStore("hello", RegistryStoreOptions{
+	store := NewRegistryStore(RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
 	ctx := context.Background()
 
 	tests := []struct {
@@ -451,12 +412,9 @@ func TestRegistryStore_FetchBlob(t *testing.T) {
 		t.Fatalf("invalid test http server: %v", err)
 	}
 	repoName := uri.Host + "/test"
-	store, err := NewRegistryStore("hello", RegistryStoreOptions{
+	store := NewRegistryStore(RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
 	ctx := context.Background()
 
 	tests := []struct {
@@ -570,12 +528,9 @@ func TestRegistryStore_FetchManifest(t *testing.T) {
 		t.Fatalf("invalid test http server: %v", err)
 	}
 	repoName := uri.Host + "/test"
-	store, err := NewRegistryStore("hello", RegistryStoreOptions{
+	store := NewRegistryStore(RegistryStoreOptions{
 		PlainHTTP: true,
 	})
-	if err != nil {
-		t.Fatalf("NewRegistryStore() error = %v, want nil", err)
-	}
 	ctx := context.Background()
 
 	tests := []struct {
