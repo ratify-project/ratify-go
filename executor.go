@@ -94,23 +94,23 @@ func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOp
 	if e.PolicyEnforcer == nil {
 		return &ValidationResult{
 			Succeeded:       false,
-			ArtifactReports: aggregatedVerifierReports,
+			ArtifactReports: aggregatedVerifierReports.ArtifactReports,
 		}, nil
 	}
 
-	decision, err := e.PolicyEnforcer.Evaluate(ctx, aggregatedVerifierReports)
+	decision, err := e.PolicyEnforcer.EvaluateReport(ctx, aggregatedVerifierReports)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate verifier reports: %w", err)
 	}
 
 	return &ValidationResult{
-		Succeeded:       decision,
-		ArtifactReports: aggregatedVerifierReports,
+		Succeeded:       decision == Allow,
+		ArtifactReports: aggregatedVerifierReports.ArtifactReports,
 	}, nil
 }
 
 // aggregateVerifierReports generates and aggregates all verifier reports.
-func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateArtifactOptions) ([]*ValidationReport, error) {
+func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateArtifactOptions) (*ValidationReport, error) {
 	// Only resolve the root subject reference.
 	ref, desc, err := e.resolveSubject(ctx, opts.Subject)
 	if err != nil {
@@ -121,10 +121,18 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	// TODO: Implement a worker pool to validate artifacts concurrently.
 	// TODO: Enforce check on the stack size.
 	// Enqueue the subject artifact as the first task.
+	var state EvaluationState
+	if e.PolicyEnforcer != nil {
+		state = e.PolicyEnforcer.NewEvaluationState()
+	}
+	subjectReport := &ValidationReport{
+		Artifact:              desc,
+		PolicyEvaluationState: state,
+	}
 	rootTask := &executorTask{
 		artifact:      ref,
 		artifactDesc:  desc,
-		subjectReport: new(ValidationReport),
+		subjectReport: subjectReport,
 	}
 	var taskStack stack.Stack[*executorTask]
 	taskStack.Push(rootTask)
@@ -140,7 +148,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 		taskStack.Push(newTasks...)
 	}
 
-	return rootTask.subjectReport.ArtifactReports, nil
+	return rootTask.subjectReport, nil
 }
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
@@ -155,15 +163,22 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	var artifactReports []*ValidationReport
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
-			results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer)
+			var nextEvalState EvaluationState
+			if task.subjectReport.PolicyEvaluationState != nil {
+				nextEvalState = task.subjectReport.PolicyEvaluationState.CreateNextState(referrer)
+			}
+			artifactReport := &ValidationReport{
+				Subject:               artifact,
+				Artifact:              referrer,
+				SubjectReport:         task.subjectReport,
+				PolicyEvaluationState: nextEvalState,
+			}
+
+			artifactReport, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, artifactReport)
 			if err != nil {
 				return err
 			}
-			artifactReport := &ValidationReport{
-				Subject:  artifact,
-				Results:  results,
-				Artifact: referrer,
-			}
+
 			artifactReports = append(artifactReports, artifactReport)
 
 			referrerArtifact := task.artifact
@@ -186,27 +201,64 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
-func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor) ([]*VerificationResult, error) {
-	var verifierReports []*VerificationResult
-
+func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, artifactReport *ValidationReport) (*ValidationReport, error) {
+	artifactReport.Results = make([]*VerificationResult, 0)
 	for _, verifier := range e.Verifiers {
 		if !verifier.Verifiable(artifact) {
 			continue
 		}
-		verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
-			Store:              e.Store,
-			Repository:         repo,
-			SubjectDescriptor:  subjectDesc,
-			ArtifactDescriptor: artifact,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
-		}
+		if e.PolicyEnforcer != nil && e.PolicyEnforcer.AllowEvalDuringVerify() {
+			// Also consider combining RequireFurtherVerification and EvaluateResult
+			// into one method and pass `verifier` or `verify()` func as a parameter.
 
-		verifierReports = append(verifierReports, verifierReport)
+			// check if it's verificationRequired to verify the subject artifact.
+			verificationRequired, err := e.PolicyEnforcer.RequireFurtherVerification(ctx, artifactReport, verifier)
+			if err != nil {
+				return nil, fmt.Errorf("failed to check if verifier is needed: %w", err)
+			}
+			if !verificationRequired {
+				continue
+			}
+
+			var verifierReport *VerificationResult
+			if artifactReport, verifierReport, err = e.verifyAndAppendResult(ctx, verifier, artifactReport, subjectDesc, artifact, repo); err != nil {
+				return nil, err
+			}
+
+			decision, err := e.PolicyEnforcer.EvaluateResult(ctx, artifactReport, verifierReport)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate verifier report: %w", err)
+			}
+
+			// Check if we can stop verifying the artifact early.
+			if decision != Undetermined {
+				break
+			}
+		} else {
+			var err error
+			if artifactReport, _, err = e.verifyAndAppendResult(ctx, verifier, artifactReport, subjectDesc, artifact, repo); err != nil {
+				return nil, err
+			}
+		}
 	}
 
-	return verifierReports, nil
+	return artifactReport, nil
+}
+
+func (e *Executor) verifyAndAppendResult(ctx context.Context, verifier Verifier, artifactReport *ValidationReport, subject, artifact ocispec.Descriptor, repo string) (*ValidationReport, *VerificationResult, error) {
+	// Verify the subject artifact against the referrer artifact.
+	verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
+		Store:              e.Store,
+		Repository:         repo,
+		SubjectDescriptor:  subject,
+		ArtifactDescriptor: artifact,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subject.Digest, verifier.Name(), err)
+	}
+
+	artifactReport.Results = append(artifactReport.Results, verifierReport)
+	return artifactReport, verifierReport, nil
 }
 
 func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry.Reference, ocispec.Descriptor, error) {
@@ -227,10 +279,11 @@ func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry
 // the executor.
 type executorTask struct {
 	// artifact is the digested reference of the referrer artifact that will be
-	// verified.
+	// verified against.
 	artifact registry.Reference
 
-	// artifactDesc is the descriptor of the referrer artifact.
+	// artifactDesc is the descriptor of the referrer artifact that will be
+	// verified against.
 	artifactDesc ocispec.Descriptor
 
 	// subjectReport is the report of the subject artifact.
