@@ -21,6 +21,20 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
+// PolicyDecision is the decision made by the policy enforcer.
+type PolicyDecision int
+
+const (
+	// PolicyDecisionUndetermined is the initial or a temporary state of the 
+	// policy decision.
+	PolicyDecisionUndetermined PolicyDecision = iota
+	// PolicyDecisionDeny is the final state when the policy evaluation failed.
+	PolicyDecisionDeny
+	// PolicyDecisionAllow is the final state when the policy evaluation 
+	// succeeded.
+	PolicyDecisionAllow
+)
+
 // PrunedState is the state how an artifact is pruned from the evaluation graph.
 type PrunedState int
 
