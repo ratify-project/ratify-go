@@ -114,11 +114,27 @@ type mockPolicyEnforcer struct {
 	returnErr bool
 }
 
-func (m *mockPolicyEnforcer) Evaluate(ctx context.Context, artifactReports []*ValidationReport) (bool, error) {
+func (m *mockPolicyEnforcer) EvaluateReport(ctx context.Context, report *ValidationReport) (PolicyDecision, error) {
 	if m.returnErr {
-		return false, errors.New("error happened when evaluating policy")
+		return Deny, errors.New("error happened when evaluating policy")
 	}
+	return Allow, nil
+}
+
+func (m *mockPolicyEnforcer) EvaluateResult(ctx context.Context, report *ValidationReport, result *VerificationResult) (PolicyDecision, error) {
+	return Undetermined, nil
+}
+
+func (m *mockPolicyEnforcer) RequireFurtherVerification(ctx context.Context, artifactReport *ValidationReport, verifier Verifier) (bool, error) {
 	return true, nil
+}
+
+func (m *mockPolicyEnforcer) NewEvaluationState() EvaluationState {
+	return nil
+}
+
+func (m *mockPolicyEnforcer) AllowEvalDuringVerify() bool {
+	return false
 }
 
 func TestValidateArtifact(t *testing.T) {
