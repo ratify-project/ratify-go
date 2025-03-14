@@ -111,14 +111,49 @@ func (m *mockStore) Resolve(ctx context.Context, ref string) (ocispec.Descriptor
 
 // mockPolicyEnforcer is a mock implementation of PolicyEnforcer.
 type mockPolicyEnforcer struct {
-	returnErr bool
+	reportEvalFailed          bool
+	resultEvalFailed          bool
+	requireVerificationFailed bool
+	allowEvalDuringVerify     bool
 }
 
-func (m *mockPolicyEnforcer) Evaluate(ctx context.Context, artifactReports []*ValidationReport) (bool, error) {
-	if m.returnErr {
-		return false, errors.New("error happened when evaluating policy")
+func (m *mockPolicyEnforcer) EvaluateReport(ctx context.Context, report *ValidationReport) (PolicyDecision, error) {
+	if m.reportEvalFailed {
+		return Deny, errors.New("error happened when evaluating policy")
+	}
+	return Allow, nil
+}
+
+func (m *mockPolicyEnforcer) EvaluateResult(ctx context.Context, report *ValidationReport, result *VerificationResult) error {
+	if m.resultEvalFailed {
+		return errors.New("error happened when evaluating result")
+	}
+	return nil
+}
+
+func (m *mockPolicyEnforcer) RequireFurtherVerification(ctx context.Context, artifactReport *ValidationReport, verifier Verifier) (bool, error) {
+	if m.requireVerificationFailed {
+		return false, errors.New("error happened when checking if further verification is required")
 	}
 	return true, nil
+}
+
+func (m *mockPolicyEnforcer) NewEvaluationState(ctx context.Context) (EvaluationState, error) {
+	return &mockEvaluationState{}, nil
+}
+
+func (m *mockPolicyEnforcer) AllowEvalDuringVerify() bool {
+	return m.allowEvalDuringVerify
+}
+
+type mockEvaluationState struct {}
+
+func (m *mockEvaluationState) NextState(artifact ocispec.Descriptor) EvaluationState {
+	return &mockEvaluationState{}
+}
+
+func (m *mockEvaluationState) Decision() PolicyDecision {
+	return Allow
 }
 
 func TestValidateArtifact(t *testing.T) {
@@ -294,6 +329,118 @@ func TestValidateArtifact(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "Verifier returned result without error and policy enforcer allows evaluation during verify",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage1,
+					},
+				},
+			}},
+			policyEnforcer: &mockPolicyEnforcer{
+				allowEvalDuringVerify: true,
+			},
+			want: &ValidationResult{
+				Succeeded: true,
+				ArtifactReports: []*ValidationReport{
+					{
+						Results: []*VerificationResult{
+							{
+								Description: validMessage1,
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Verifier returned result without error and policy enforcer allows evaluation during verify but failed to check RequireFurtherVerification",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage1,
+					},
+				},
+			}},
+			policyEnforcer: &mockPolicyEnforcer{
+				allowEvalDuringVerify:     true,
+				requireVerificationFailed: true,
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Verifier returned result without error and policy enforcer allows evaluation during verify but failed to evaluate the result",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage1,
+					},
+				},
+			}},
+			policyEnforcer: &mockPolicyEnforcer{
+				allowEvalDuringVerify: true,
+				resultEvalFailed:      true,
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
 			name: "Policy enforcer is not set",
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
@@ -363,7 +510,7 @@ func TestValidateArtifact(t *testing.T) {
 				},
 			}},
 			policyEnforcer: &mockPolicyEnforcer{
-				returnErr: true,
+				reportEvalFailed: true,
 			},
 			want:    nil,
 			wantErr: true,
