@@ -109,16 +109,30 @@ func (m *mockStore) Resolve(ctx context.Context, ref string) (ocispec.Descriptor
 	return ocispec.Descriptor{}, nil
 }
 
-// mockPolicyEnforcer is a mock implementation of PolicyEnforcer.
-type mockPolicyEnforcer struct {
-	returnErr bool
+type mockEvaluator struct{}
+
+func (m *mockEvaluator) AddResult(ctx context.Context, subjectDigest, artifactDigest string, report *VerificationResult) error {
+	return nil
 }
 
-func (m *mockPolicyEnforcer) Evaluate(ctx context.Context, artifactReports []*ValidationReport) (bool, error) {
-	if m.returnErr {
-		return false, errors.New("error happened when evaluating policy")
-	}
+func (m *mockEvaluator) VerifyRequired(ctx context.Context, subjectDigest, artifactDigest string, verifier Verifier) error {
+	return ErrVerifyRequired
+}
+
+func (m *mockEvaluator) Evaluate(ctx context.Context) (bool, error) {
 	return true, nil
+}
+
+// mockPolicyEnforcer is a mock implementation of PolicyEnforcer.
+type mockPolicyEnforcer struct {
+	evaluator *mockEvaluator
+}
+
+func (m *mockPolicyEnforcer) Evaluator(ctx context.Context, subjectDigest string) (Evaluator, error) {
+	if m.evaluator == nil {
+		return nil, errors.New("error happened creating evaluator")
+	}
+	return m.evaluator, nil
 }
 
 func TestValidateArtifact(t *testing.T) {
@@ -186,8 +200,10 @@ func TestValidateArtifact(t *testing.T) {
 					testArtifact1: {},
 				},
 			},
-			verifiers:      []Verifier{&mockVerifier{}},
-			policyEnforcer: &mockPolicyEnforcer{},
+			verifiers: []Verifier{&mockVerifier{}},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{},
+			},
 			want: &ValidationResult{
 				Succeeded: true,
 			},
@@ -213,7 +229,9 @@ func TestValidateArtifact(t *testing.T) {
 				},
 			},
 			verifiers:      []Verifier{&mockVerifier{}},
-			policyEnforcer: &mockPolicyEnforcer{},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{},
+			},
 			want: &ValidationResult{
 				Succeeded: true,
 				ArtifactReports: []*ValidationReport{
@@ -247,7 +265,9 @@ func TestValidateArtifact(t *testing.T) {
 			verifiers: []Verifier{&mockVerifier{
 				verifiable: true,
 			}},
-			policyEnforcer: &mockPolicyEnforcer{},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{},
+			},
 			want:           nil,
 			wantErr:        true,
 		},
@@ -278,7 +298,9 @@ func TestValidateArtifact(t *testing.T) {
 					},
 				},
 			}},
-			policyEnforcer: &mockPolicyEnforcer{},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{},
+			},
 			want: &ValidationResult{
 				Succeeded: true,
 				ArtifactReports: []*ValidationReport{
@@ -362,11 +384,9 @@ func TestValidateArtifact(t *testing.T) {
 					},
 				},
 			}},
-			policyEnforcer: &mockPolicyEnforcer{
-				returnErr: true,
-			},
-			want:    nil,
-			wantErr: true,
+			policyEnforcer: &mockPolicyEnforcer{},
+			want:           nil,
+			wantErr:        true,
 		},
 		{
 			name: "3-layer nested artifacts are verified",
@@ -418,7 +438,9 @@ func TestValidateArtifact(t *testing.T) {
 				},
 			},
 			},
-			policyEnforcer: &mockPolicyEnforcer{},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{},
+			},
 			want: &ValidationResult{
 				Succeeded: true,
 				ArtifactReports: []*ValidationReport{
