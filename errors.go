@@ -17,5 +17,6 @@ package ratify
 
 import "errors"
 
-// ErrVerifyRequired is returned when the verification is required for [Evaluator.VerifyRequired].
-var ErrVerifyRequired = errors.New("verification required")
+// ErrPruned is returned when the evaluator does not need given subject and
+// artifact to make a decision by [Evaluator.Pruned].
+var ErrPruned = errors.New("evluator sub-graph is pruned")

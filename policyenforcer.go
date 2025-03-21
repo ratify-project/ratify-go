@@ -49,10 +49,11 @@ type ValidationReport struct {
 // Evaluator is an interface that defines methods to aggregate and evaluate
 // verification results generated for an artifact per validation request.
 type Evaluator interface {
-	// VerifyRequired checks if the provided verifier is required to perform
-	// verification on the subject against the artifact. If the verifier is
-	// required, it returns [ErrVerifyRequired].
-	VerifyRequired(ctx context.Context, subjectDigest, artifactDigest string, verifier Verifier) error
+	// Pruned checks if the policy evaluation is completed for provided pair of
+	// subject and artifact. If the verifier is provided, it will futher check
+	// if the verification result is required for policy evaluation. It returns
+	// [ErrPruned] if the policy evaluation is completed.
+	Pruned(ctx context.Context, subjectDigest, artifactDigest string, verifier Verifier) error
 
 	// AddResult adds the verification result of the subject against the
 	// artifact to the evaluator for further evaluation.
