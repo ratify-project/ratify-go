@@ -115,8 +115,12 @@ func (m *mockEvaluator) AddResult(ctx context.Context, subjectDigest, artifactDi
 	return nil
 }
 
-func (m *mockEvaluator) VerifyRequired(ctx context.Context, subjectDigest, artifactDigest string, verifier Verifier) error {
-	return ErrVerifyRequired
+func (m *mockEvaluator) Pruned(ctx context.Context, subjectDigest, artifactDigest, verifierName string) error {
+	return nil
+}
+
+func (m *mockEvaluator) EvaluateArtifact(ctx context.Context, artifactDigest string) error {
+	return nil
 }
 
 func (m *mockEvaluator) Evaluate(ctx context.Context) (bool, error) {
@@ -228,7 +232,7 @@ func TestValidateArtifact(t *testing.T) {
 					},
 				},
 			},
-			verifiers:      []Verifier{&mockVerifier{}},
+			verifiers: []Verifier{&mockVerifier{}},
 			policyEnforcer: &mockPolicyEnforcer{
 				evaluator: &mockEvaluator{},
 			},
@@ -268,8 +272,8 @@ func TestValidateArtifact(t *testing.T) {
 			policyEnforcer: &mockPolicyEnforcer{
 				evaluator: &mockEvaluator{},
 			},
-			want:           nil,
-			wantErr:        true,
+			want:    nil,
+			wantErr: true,
 		},
 		{
 			name: "Verifier returned result without error",

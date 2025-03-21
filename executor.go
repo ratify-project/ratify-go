@@ -82,8 +82,7 @@ func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforce
 
 // ValidateArtifact returns the result of verifying an artifact.
 func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOptions) (*ValidationResult, error) {
-	err := validateExecutorSetup(e.Store, e.Verifiers)
-	if err != nil {
+	if err := validateExecutorSetup(e.Store, e.Verifiers); err != nil {
 		return nil, err
 	}
 
@@ -95,7 +94,7 @@ func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOp
 	if evaluator == nil {
 		return &ValidationResult{
 			Succeeded:       false,
-			ArtifactReports: aggregatedVerifierReports.ArtifactReports,
+			ArtifactReports: aggregatedVerifierReports,
 		}, nil
 	}
 
@@ -106,12 +105,12 @@ func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOp
 
 	return &ValidationResult{
 		Succeeded:       decision,
-		ArtifactReports: aggregatedVerifierReports.ArtifactReports,
+		ArtifactReports: aggregatedVerifierReports,
 	}, nil
 }
 
 // aggregateVerifierReports generates and aggregates all verifier reports.
-func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateArtifactOptions) (*ValidationReport, Evaluator, error) {
+func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateArtifactOptions) ([]*ValidationReport, Evaluator, error) {
 	// Only resolve the root subject reference.
 	ref, desc, err := e.resolveSubject(ctx, opts.Subject)
 	if err != nil {
@@ -151,7 +150,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 		taskStack.Push(newTasks...)
 	}
 
-	return rootTask.subjectReport, evaluator, nil
+	return rootTask.subjectReport.ArtifactReports, evaluator, nil
 }
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
@@ -166,18 +165,21 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	var artifactReports []*ValidationReport
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
-			artifactReport := &ValidationReport{
-				Subject:  artifact,
-				Artifact: referrer,
-			}
-
-			artifactReport, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, artifactReport, evaluator)
-			if err != nil {
+			results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator)
+			if err != nil && err != ErrArtifactPruned {
 				return err
 			}
-
+			
+			artifactReport := &ValidationReport{
+				Subject:  artifact,
+				Results:  results,
+				Artifact: referrer,
+			}
 			artifactReports = append(artifactReports, artifactReport)
 
+			if err == ErrArtifactPruned {
+				return ErrArtifactPruned
+			}
 			referrerArtifact := task.artifact
 			referrerArtifact.Reference = referrer.Digest.String()
 			newTasks = append(newTasks, &executorTask{
@@ -188,57 +190,56 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 		}
 		return nil
 	})
-	if err != nil {
+	if err != nil && err != ErrArtifactPruned {
 		return nil, fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
 	}
+	if evaluator != nil && evaluator.EvaluateArtifact(ctx, task.artifactDesc.Digest.String()) != nil {
+		return nil, fmt.Errorf("failed to evaluate artifact %s: %w", artifact, err)
+	}		
 	task.subjectReport.ArtifactReports = append(task.subjectReport.ArtifactReports, artifactReports...)
 
+	if err == ErrArtifactPruned {
+		return nil, nil
+	}
 	return newTasks, nil
 }
 
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
-func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, artifactReport *ValidationReport, evaluator Evaluator) (*ValidationReport, error) {
-	artifactReport.Results = make([]*VerificationResult, 0)
+func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator) ([]*VerificationResult, error) {
+	var verifierReports []*VerificationResult
+
 	for _, verifier := range e.Verifiers {
 		if !verifier.Verifiable(artifact) {
 			continue
 		}
 
 		if evaluator != nil {
-			if err := evaluator.VerifyRequired(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifier); err != ErrVerifyRequired {
+			err := evaluator.Pruned(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifier.Name())
+			if err == ErrVerifierPruned {
 				continue
+			} else if err == ErrArtifactPruned {
+				return verifierReports, err
 			}
-			// Verify the subject artifact against the referrer artifact.
-			verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
-				Store:              e.Store,
-				Repository:         repo,
-				SubjectDescriptor:  subjectDesc,
-				ArtifactDescriptor: artifact,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
-			}
-			if evaluator.AddResult(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifierReport) != nil {
-				return nil, fmt.Errorf("failed to add verifier report for artifact %s@%s verified by verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
-			}
-			artifactReport.Results = append(artifactReport.Results, verifierReport)
-		} else {
-			// Verify the subject artifact against the referrer artifact.
-			verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
-				Store:              e.Store,
-				Repository:         repo,
-				SubjectDescriptor:  subjectDesc,
-				ArtifactDescriptor: artifact,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
-			}
-			artifactReport.Results = append(artifactReport.Results, verifierReport)
 		}
+		// Verify the subject artifact against the referrer artifact.
+		verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
+			Store:              e.Store,
+			Repository:         repo,
+			SubjectDescriptor:  subjectDesc,
+			ArtifactDescriptor: artifact,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
+		}
+
+		if evaluator != nil && evaluator.AddResult(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifierReport) != nil {
+			return nil, fmt.Errorf("failed to add verifier report for artifact %s@%s verified by verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
+		}
+		verifierReports = append(verifierReports, verifierReport)
 	}
 
-	return artifactReport, nil
+	return verifierReports, nil
 }
 
 func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry.Reference, ocispec.Descriptor, error) {
