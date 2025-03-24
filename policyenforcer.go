@@ -67,8 +67,16 @@ type ValidationReport struct {
 // Evaluator is an interface that defines methods to aggregate and evaluate
 // verification results generated for an artifact per validation request.
 type Evaluator interface {
-	// Pruned checks if the policy evaluation is completed before the verifier
-	// to verify the subject against the artifact.
+	// Pruned determines whether verification for a given subject-artifact pair
+	// should be skipped.
+	// It returns [PrunedStateVerifierPruned] if the verifier is not required to
+	// verify the subject against the artifact.
+	// It returns [PrunedStateArtifactPruned] if the artifact is not required to
+	// be verified against.
+	// It returns [PrunedStateSubjectPruned] if the subject is not required to
+	// be verified.
+	// It returns [PrunedStateNone] if the verifier is required to verify the
+	// subject against the artifact.
 	Pruned(ctx context.Context, subjectDigest, artifactDigest, verifierName string) (PrunedState, error)
 
 	// AddResult adds the verification result of the subject against the

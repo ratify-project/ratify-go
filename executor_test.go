@@ -113,9 +113,10 @@ type mockEvaluator struct {
 	returnEvaluateErr    bool
 	returnPrunedErr      bool
 	returnAddResultErr   bool
+	returnCommitErr      bool
 	verifierPrunedDigest string
 	artifactPrunedDigest string
-	subjectPrunedDigest string
+	subjectPrunedDigest  string
 }
 
 func (m *mockEvaluator) AddResult(ctx context.Context, subjectDigest, artifactDigest string, report *VerificationResult) error {
@@ -142,6 +143,9 @@ func (m *mockEvaluator) Pruned(ctx context.Context, subjectDigest, artifactDiges
 }
 
 func (m *mockEvaluator) Commit(ctx context.Context, artifactDigest string) error {
+	if m.returnCommitErr {
+		return errors.New("error happened committing")
+	}
 	return nil
 }
 
@@ -439,6 +443,41 @@ func TestValidateArtifact(t *testing.T) {
 			policyEnforcer: &mockPolicyEnforcer{
 				evaluator: &mockEvaluator{
 					returnEvaluateErr: true,
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Verifier returned result without error but evaluator failed to commit",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage1,
+					},
+				},
+			}},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{
+					returnCommitErr: true,
 				},
 			},
 			want:    nil,

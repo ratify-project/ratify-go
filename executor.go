@@ -171,7 +171,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
 			results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator)
-			if err != nil && err != errSubjectPruned {
+			if err != nil && !errors.Is(err, errSubjectPruned) {
 				return err
 			}
 
@@ -182,7 +182,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 			}
 			artifactReports = append(artifactReports, artifactReport)
 
-			if err == errSubjectPruned {
+			if errors.Is(err, errSubjectPruned) {
 				return errSubjectPruned
 			}
 			referrerArtifact := task.artifact
@@ -195,8 +195,11 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 		}
 		return nil
 	})
-	if err != nil && err != errSubjectPruned {
-		return nil, fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
+	if err != nil {
+		if err != errSubjectPruned {
+			return nil, fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
+		}
+		newTasks = nil
 	}
 	if evaluator != nil {
 		if err := evaluator.Commit(ctx, task.artifactDesc.Digest.String()); err != nil {
@@ -205,9 +208,6 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	}
 	task.subjectReport.ArtifactReports = append(task.subjectReport.ArtifactReports, artifactReports...)
 
-	if err == errSubjectPruned {
-		return nil, nil
-	}
 	return newTasks, nil
 }
 
@@ -224,14 +224,18 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 		if evaluator != nil {
 			prunedState, err := evaluator.Pruned(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifier.Name())
 			if err != nil {
-				return nil, fmt.Errorf("failed to check if verifier %s is required to verify subject %s against artifact %s, %w", verifier.Name(), subjectDesc.Digest.String(), artifact.Digest.String(), err)
+				return nil, fmt.Errorf("failed to check if verifier: %s is required to verify subject: %s, against artifact: %s, err: %w", verifier.Name(), subjectDesc.Digest, artifact.Digest, err)
 			}
 			switch prunedState {
 			case PrunedStateVerifierPruned:
+				// Skip this verifier if it's not required.
 				continue
 			case PrunedStateArtifactPruned:
+				// Skip remaining verifiers if the artifact is not required.
 				return verifierReports, nil
 			case PrunedStateSubjectPruned:
+				// Skip remaining verifiers and return `errSubjectPruned` to
+				// notify `ListReferrers`stop processing.
 				return verifierReports, errSubjectPruned
 			default:
 				// do nothing if it's not pruned.
