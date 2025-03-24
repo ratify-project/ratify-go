@@ -17,11 +17,6 @@ package ratify
 
 import "errors"
 
-// ErrVerifierPruned is returned when the evaluator does not need given verifier
-// to verify the subject against the artifact to make a decision by 
-// [Evaluator.Pruned].
-var ErrVerifierPruned = errors.New("evluator sub-graph is pruned for the verifier")
-
-// ErrArtifactPruned is returned when the evaluator does not need given artifact
+// ErrSubjectPruned is returned when the evaluator does not need given subject
 // to be verified to make a decision by [Evaluator.Pruned].
-var ErrArtifactPruned = errors.New("evluator sub-graph is pruned for the artifact")
+var ErrSubjectPruned = errors.New("evaluator sub-graph is pruned for the subject")

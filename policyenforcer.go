@@ -21,6 +21,24 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
+// PrunedState is the state how an artifact is pruned from the evaluation graph.
+type PrunedState int
+
+const (
+	// PrunedStateNone is the state when the artifact is not pruned from the
+	// evaluation graph.
+	PrunedStateNone PrunedState = iota
+	// PrunedStateVerifierPruned is the state when the verifier is not required
+	// to verify the subject against the artifact to make a decision.
+	PrunedStateVerifierPruned
+	// PrunedStateArtifactPruned is the state when the artifact is not required
+	// to be verified against to make a decision.
+	PrunedStateArtifactPruned
+	// PrunedStateSubjectPruned is the state when the subject is not required to
+	// be verified to make a decision.
+	PrunedStateSubjectPruned
+)
+
 // ValidationReport describes the results of verifying an artifact and its
 // nested artifacts by available verifiers.
 type ValidationReport struct {
@@ -49,21 +67,17 @@ type ValidationReport struct {
 // Evaluator is an interface that defines methods to aggregate and evaluate
 // verification results generated for an artifact per validation request.
 type Evaluator interface {
-	// Pruned checks if the policy evaluation is completed for provided pair of
-	// subject and artifact. 
-	// It returns [ErrVerifierPruned] if the policy evaluation is completed for 
-	// the given verifier. 
-	// It returns [ErrArtifactPruned] if the policy evaluation is completed for 
-	// the given artifact regardless of verifiers.
-	Pruned(ctx context.Context, subjectDigest, artifactDigest, verifierName string) error
+	// Pruned checks if the policy evaluation is completed before the verifier
+	// to verify the subject against the artifact.
+	Pruned(ctx context.Context, subjectDigest, artifactDigest, verifierName string) (PrunedState, error)
 
 	// AddResult adds the verification result of the subject against the
 	// artifact to the evaluator for further evaluation.
 	AddResult(ctx context.Context, subjectDigest, artifactDigest string, artifactResult *VerificationResult) error
 
-	// EvaluateArtifact evaluates aggregated verification results for the given
-	// artifact.
-	EvaluateArtifact(ctx context.Context, artifactDigest string) error
+	// Commit commits the verification results of the subject. No more results
+	// will be added for the subject after this call.
+	Commit(ctx context.Context, subjectDigest string) error
 
 	// Evaluate makes the final decision based on aggregated verification
 	// results added so far.

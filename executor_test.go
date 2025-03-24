@@ -115,11 +115,11 @@ func (m *mockEvaluator) AddResult(ctx context.Context, subjectDigest, artifactDi
 	return nil
 }
 
-func (m *mockEvaluator) Pruned(ctx context.Context, subjectDigest, artifactDigest, verifierName string) error {
-	return nil
+func (m *mockEvaluator) Pruned(ctx context.Context, subjectDigest, artifactDigest, verifierName string) (PrunedState, error) {
+	return PrunedStateNone, nil
 }
 
-func (m *mockEvaluator) EvaluateArtifact(ctx context.Context, artifactDigest string) error {
+func (m *mockEvaluator) Commit(ctx context.Context, artifactDigest string) error {
 	return nil
 }
 
