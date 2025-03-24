@@ -17,12 +17,17 @@ package ratify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/ratify-project/ratify-go/internal/stack"
 	"oras.land/oras-go/v2/registry"
 )
+
+// errSubjectPruned is returned when the evaluator does not need given subject
+// to be verified to make a decision by [Evaluator.Pruned].
+var errSubjectPruned = errors.New("evaluator sub-graph is pruned for the subject")
 
 // ValidateArtifactOptions describes the artifact validation options.
 type ValidateArtifactOptions struct {
@@ -166,7 +171,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
 			results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator)
-			if err != nil && err != ErrSubjectPruned {
+			if err != nil && err != errSubjectPruned {
 				return err
 			}
 
@@ -177,8 +182,8 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 			}
 			artifactReports = append(artifactReports, artifactReport)
 
-			if err == ErrSubjectPruned {
-				return ErrSubjectPruned
+			if err == errSubjectPruned {
+				return errSubjectPruned
 			}
 			referrerArtifact := task.artifact
 			referrerArtifact.Reference = referrer.Digest.String()
@@ -190,17 +195,17 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 		}
 		return nil
 	})
-	if err != nil && err != ErrSubjectPruned {
+	if err != nil && err != errSubjectPruned {
 		return nil, fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
 	}
 	if evaluator != nil {
 		if err := evaluator.Commit(ctx, task.artifactDesc.Digest.String()); err != nil {
-			return nil, fmt.Errorf("failed to evaluate artifact %s: %w", artifact, err)
+			return nil, fmt.Errorf("failed to commit the artifact %s: %w", artifact, err)
 		}
 	}
 	task.subjectReport.ArtifactReports = append(task.subjectReport.ArtifactReports, artifactReports...)
 
-	if err == ErrSubjectPruned {
+	if err == errSubjectPruned {
 		return nil, nil
 	}
 	return newTasks, nil
@@ -227,7 +232,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			case PrunedStateArtifactPruned:
 				return verifierReports, nil
 			case PrunedStateSubjectPruned:
-				return verifierReports, ErrSubjectPruned
+				return verifierReports, errSubjectPruned
 			default:
 				// do nothing if it's not pruned.
 			}

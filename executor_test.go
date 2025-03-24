@@ -109,13 +109,35 @@ func (m *mockStore) Resolve(ctx context.Context, ref string) (ocispec.Descriptor
 	return ocispec.Descriptor{}, nil
 }
 
-type mockEvaluator struct{}
+type mockEvaluator struct {
+	returnEvaluateErr    bool
+	returnPrunedErr      bool
+	returnAddResultErr   bool
+	verifierPrunedDigest string
+	artifactPrunedDigest string
+	subjectPrunedDigest string
+}
 
 func (m *mockEvaluator) AddResult(ctx context.Context, subjectDigest, artifactDigest string, report *VerificationResult) error {
+	if m.returnAddResultErr {
+		return errors.New("error happened adding result")
+	}
 	return nil
 }
 
 func (m *mockEvaluator) Pruned(ctx context.Context, subjectDigest, artifactDigest, verifierName string) (PrunedState, error) {
+	if m.returnPrunedErr {
+		return PrunedStateNone, errors.New("error happened checking pruned state")
+	}
+	if m.verifierPrunedDigest != "" && artifactDigest == m.verifierPrunedDigest {
+		return PrunedStateVerifierPruned, nil
+	}
+	if m.artifactPrunedDigest != "" && artifactDigest == m.artifactPrunedDigest {
+		return PrunedStateArtifactPruned, nil
+	}
+	if m.subjectPrunedDigest != "" && subjectDigest == m.subjectPrunedDigest {
+		return PrunedStateSubjectPruned, nil
+	}
 	return PrunedStateNone, nil
 }
 
@@ -124,6 +146,9 @@ func (m *mockEvaluator) Commit(ctx context.Context, artifactDigest string) error
 }
 
 func (m *mockEvaluator) Evaluate(ctx context.Context) (bool, error) {
+	if m.returnEvaluateErr {
+		return false, errors.New("error happened evaluating")
+	}
 	return true, nil
 }
 
@@ -276,6 +301,36 @@ func TestValidateArtifact(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "Evaluator failed to prune the artifact",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+			}},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{
+					returnPrunedErr: true,
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
 			name: "Verifier returned result without error",
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
@@ -318,6 +373,76 @@ func TestValidateArtifact(t *testing.T) {
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name: "Verifier returned result without error but evaluator failed to add result",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage1,
+					},
+				},
+			}},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{
+					returnAddResultErr: true,
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "Verifier returned result without error but Evaluate failed",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage1,
+					},
+				},
+			}},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{
+					returnEvaluateErr: true,
+				},
+			},
+			want:    nil,
+			wantErr: true,
 		},
 		{
 			name: "Policy enforcer is not set",
@@ -477,6 +602,255 @@ func TestValidateArtifact(t *testing.T) {
 								ArtifactReports: []*ValidationReport{},
 							}},
 						}},
+					},
+				}},
+			wantErr: false,
+		},
+		{
+			name: "Verifier pruned for artifact with digest: testDigest2",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+						{
+							Digest: testDigest3,
+						},
+					},
+					testArtifact2: {
+						{
+							Digest: testDigest4,
+						},
+					},
+					testArtifact4: {
+						{
+							Digest: testDigest5,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage2,
+					},
+					testDigest3: {
+						Description: validMessage3,
+					},
+					testDigest4: {
+						Description: validMessage4,
+					},
+					testDigest5: {
+						Description: validMessage5,
+					},
+				},
+			},
+			},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{
+					verifierPrunedDigest: testDigest2,
+				},
+			},
+			want: &ValidationResult{
+				Succeeded: true,
+				ArtifactReports: []*ValidationReport{
+					{
+						Results: []*VerificationResult{
+							{
+								Description: validMessage3,
+							},
+						},
+						ArtifactReports: []*ValidationReport{},
+					},
+					{
+						ArtifactReports: []*ValidationReport{{
+							Results: []*VerificationResult{
+								{
+									Description: validMessage4,
+								},
+							},
+							ArtifactReports: []*ValidationReport{{
+								Results: []*VerificationResult{
+									{
+										Description: validMessage5,
+									},
+								},
+								ArtifactReports: []*ValidationReport{},
+							}},
+						}},
+					},
+				}},
+			wantErr: false,
+		},
+		{
+			name: "Artifact pruned for artifact with digest: testDigest2",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+						{
+							Digest: testDigest3,
+						},
+					},
+					testArtifact2: {
+						{
+							Digest: testDigest4,
+						},
+					},
+					testArtifact4: {
+						{
+							Digest: testDigest5,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage2,
+					},
+					testDigest3: {
+						Description: validMessage3,
+					},
+					testDigest4: {
+						Description: validMessage4,
+					},
+					testDigest5: {
+						Description: validMessage5,
+					},
+				},
+			},
+			},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{
+					artifactPrunedDigest: testDigest2,
+				},
+			},
+			want: &ValidationResult{
+				Succeeded: true,
+				ArtifactReports: []*ValidationReport{
+					{
+						Results: []*VerificationResult{
+							{
+								Description: validMessage3,
+							},
+						},
+						ArtifactReports: []*ValidationReport{},
+					},
+					{
+						ArtifactReports: []*ValidationReport{{
+							Results: []*VerificationResult{
+								{
+									Description: validMessage4,
+								},
+							},
+							ArtifactReports: []*ValidationReport{{
+								Results: []*VerificationResult{
+									{
+										Description: validMessage5,
+									},
+								},
+								ArtifactReports: []*ValidationReport{},
+							}},
+						}},
+					},
+				}},
+			wantErr: false,
+		},
+		{
+			name: "Subject pruned for subject with digest: testDigest2",
+			opts: ValidateArtifactOptions{
+				Subject: testImage,
+			},
+			store: &mockStore{
+				tagToDesc: map[string]ocispec.Descriptor{
+					testImage: {
+						Digest: testDigest1,
+					},
+				},
+				digestToReferrers: map[string][]ocispec.Descriptor{
+					testArtifact1: {
+						{
+							Digest: testDigest2,
+						},
+						{
+							Digest: testDigest3,
+						},
+					},
+					testArtifact2: {
+						{
+							Digest: testDigest4,
+						},
+					},
+					testArtifact4: {
+						{
+							Digest: testDigest5,
+						},
+					},
+				},
+			},
+			verifiers: []Verifier{&mockVerifier{
+				verifiable: true,
+				verifyResult: map[string]*VerificationResult{
+					testDigest2: {
+						Description: validMessage2,
+					},
+					testDigest3: {
+						Description: validMessage3,
+					},
+					testDigest4: {
+						Description: validMessage4,
+					},
+					testDigest5: {
+						Description: validMessage5,
+					},
+				},
+			},
+			},
+			policyEnforcer: &mockPolicyEnforcer{
+				evaluator: &mockEvaluator{
+					subjectPrunedDigest: testDigest2,
+				},
+			},
+			want: &ValidationResult{
+				Succeeded: true,
+				ArtifactReports: []*ValidationReport{
+					{
+						Results: []*VerificationResult{
+							{
+								Description: validMessage3,
+							},
+						},
+						ArtifactReports: []*ValidationReport{},
+					},
+					{
+						Results: []*VerificationResult{
+							{
+								Description: validMessage2,
+							},
+						},
+						ArtifactReports: []*ValidationReport{{}},
 					},
 				}},
 			wantErr: false,
