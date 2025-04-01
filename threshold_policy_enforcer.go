@@ -18,12 +18,30 @@ package ratify
 import (
 	"context"
 	"fmt"
+	"strings"
+
+	"github.com/ratify-project/ratify-go/internal/set"
 )
 
 const allRule = 0 // All nested rules must succeed for this rule to be allowed.
 
-// PolicyRule defines the policy rule for [ThresholdPolicyEnforcer].
-type PolicyRule struct {
+// thresholdPolicyDecision is the decision made by threshold policy enforcer.
+type thresholdPolicyDecision int
+
+const (
+	// thresholdPolicyDecisionUndetermined is the initial or a temporary state
+	// of the policy decision.
+	thresholdPolicyDecisionUndetermined thresholdPolicyDecision = iota
+	// thresholdPolicyDecisionDeny is the final state when the policy evaluation
+	// failed.
+	thresholdPolicyDecisionDeny
+	// thresholdPolicyDecisionAllow is the final state when the policy
+	// evaluation succeeded.
+	thresholdPolicyDecisionAllow
+)
+
+// ThresholdPolicyRule defines the policy rule for [ThresholdPolicyEnforcer].
+type ThresholdPolicyRule struct {
 	// Verifier is the Verifier to be used for this rule.
 	// If set, the rule requires the Verifier to verify the corresponding
 	// artifact. Either Verifier or Rules must be set.
@@ -37,15 +55,35 @@ type PolicyRule struct {
 
 	// Rules hold nested rules that could be applied to referrer artifacts.
 	// Optional.
-	Rules []*PolicyRule
+	Rules []*ThresholdPolicyRule
 
 	// verifiers hold the verifiers that are available in the nested rules with
 	// Verifier set. It's auto generated during the compilation of the policy.
-	verifiers map[string]struct{}
+	verifiers *set.Set[string]
 
 	// ruleID is the unique ID of the rule in the policy tree. It's auto
 	// generatd during the compilation of the policy.
 	ruleID int
+}
+
+// compile compiles the policy rule by assigning unique IDs and aggregating
+// verifiers from nested rules recursively.
+func (r *ThresholdPolicyRule) compile(ruleID int) (*set.Set[string], int) {
+	r.ruleID = ruleID
+	ruleID++
+
+	verifiers := set.NewSet[string]()
+	for _, childRule := range r.Rules {
+		var childVerifiers *set.Set[string]
+		childVerifiers, ruleID = childRule.compile(ruleID)
+		verifiers.Copy(childVerifiers)
+	}
+	r.verifiers = verifiers
+
+	if r.Verifier != "" {
+		return set.NewSet(r.Verifier), ruleID
+	}
+	return verifiers, ruleID
 }
 
 // evaluationNode holds the statistics for a policy rule during evaluation.
@@ -53,7 +91,7 @@ type PolicyRule struct {
 // without Verifier set.
 type evaluationNode struct {
 	// rule is the policy rule for this node.
-	rule *PolicyRule
+	rule *ThresholdPolicyRule
 
 	// subjectNode is the parent node of this node.
 	subjectNode *evaluationNode
@@ -65,7 +103,7 @@ type evaluationNode struct {
 	// ruleDecision indicates the decision made by the nested rules and the
 	// threshold. If there is no nested rules, this field is set to Allow by
 	// default.
-	ruleDecision PolicyDecision
+	ruleDecision thresholdPolicyDecision
 
 	// childVirtualNodes is the index of the immediate virtual evaluation
 	// nodes by rule ID.
@@ -79,14 +117,14 @@ type evaluationNode struct {
 	commited bool
 }
 
-func (n *evaluationNode) addChildNode(rule *PolicyRule, artifactDigest string) *evaluationNode {
+func (n *evaluationNode) addChildNode(rule *ThresholdPolicyRule, artifactDigest string) *evaluationNode {
 	node := &evaluationNode{
 		rule:           rule,
 		subjectNode:    n,
 		artifactDigest: artifactDigest,
 	}
 	if len(rule.Rules) == 0 {
-		node.ruleDecision = PolicyDecisionAllow
+		node.ruleDecision = thresholdPolicyDecisionAllow
 	} else {
 		node.childNodes = make(map[int][]*evaluationNode)
 		node.childVirtualNodes = make(map[int]*evaluationNode)
@@ -96,7 +134,7 @@ func (n *evaluationNode) addChildNode(rule *PolicyRule, artifactDigest string) *
 	return node
 }
 
-func (n *evaluationNode) addChildVirtualNode(rule *PolicyRule) *evaluationNode {
+func (n *evaluationNode) addChildVirtualNode(rule *ThresholdPolicyRule) *evaluationNode {
 	node := &evaluationNode{
 		rule:        rule,
 		subjectNode: n,
@@ -111,7 +149,7 @@ func (n *evaluationNode) addChildVirtualNode(rule *PolicyRule) *evaluationNode {
 // refreshDecision refreshes the decision for the node and its ancestors.
 func (n *evaluationNode) refreshDecision() {
 	// 1. Calculate rule decision.
-	if n.calculateDecision() == PolicyDecisionAllow {
+	if n.calculateDecision() == thresholdPolicyDecisionAllow {
 		// 2. If the rule decision is allow, propagate it to ancestors.
 		n.refreshAncestorsDecision()
 	}
@@ -119,8 +157,8 @@ func (n *evaluationNode) refreshDecision() {
 
 // calculateDecision calculates the decision for the node based on the gathered
 // results.
-func (n *evaluationNode) calculateDecision() PolicyDecision {
-	if n.ruleDecision != PolicyDecisionUndetermined {
+func (n *evaluationNode) calculateDecision() thresholdPolicyDecision {
+	if n.ruleDecision != thresholdPolicyDecisionUndetermined {
 		return n.ruleDecision
 	}
 
@@ -128,14 +166,14 @@ func (n *evaluationNode) calculateDecision() PolicyDecision {
 	for _, nodes := range n.childNodes {
 		// validate each rule
 		for _, node := range nodes {
-			if node.ruleDecision == PolicyDecisionAllow {
+			if node.ruleDecision == thresholdPolicyDecisionAllow {
 				successfulRuleCount++
 				break
 			}
 		}
 	}
 	for _, node := range n.childVirtualNodes {
-		if node.ruleDecision == PolicyDecisionAllow {
+		if node.ruleDecision == thresholdPolicyDecisionAllow {
 			successfulRuleCount++
 		}
 	}
@@ -145,10 +183,10 @@ func (n *evaluationNode) calculateDecision() PolicyDecision {
 		threshold = len(n.rule.Rules)
 	}
 	if successfulRuleCount >= threshold {
-		n.ruleDecision = PolicyDecisionAllow
+		n.ruleDecision = thresholdPolicyDecisionAllow
 	}
 	if n.isCommited() {
-		n.ruleDecision = PolicyDecisionDeny
+		n.ruleDecision = thresholdPolicyDecisionDeny
 	}
 	return n.ruleDecision
 }
@@ -157,28 +195,24 @@ func (n *evaluationNode) calculateDecision() PolicyDecision {
 // In single goroutine mode, we only need to check the commited field.
 // In multi goroutine mode, we need to track referrers listed before committed.
 func (n *evaluationNode) isCommited() bool {
-	node := n
-	for node != nil {
+	for node := n; node != nil; node = node.subjectNode {
 		if node.commited {
 			return true
 		}
-		node = node.subjectNode
 	}
 	return false
 }
 
 // refreshAncestorsDecision refreshes the decision for all ancestors.
 func (n *evaluationNode) refreshAncestorsDecision() {
-	node := n.subjectNode
-	for node != nil {
-		if node.ruleDecision != PolicyDecisionUndetermined {
+	for node := n.subjectNode; node != nil; node = node.subjectNode {
+		if node.ruleDecision != thresholdPolicyDecisionUndetermined {
 			break
 		}
 		// only propagate allow decision to ancestors.
-		if node.calculateDecision() != PolicyDecisionAllow {
+		if node.calculateDecision() != thresholdPolicyDecisionAllow {
 			break
 		}
-		node = node.subjectNode
 	}
 }
 
@@ -187,7 +221,7 @@ func (n *evaluationNode) refreshAncestorsDecision() {
 func (n *evaluationNode) finalized() bool {
 	node := n
 	for node != nil {
-		if node.ruleDecision != PolicyDecisionUndetermined {
+		if node.ruleDecision != thresholdPolicyDecisionUndetermined {
 			return true
 		}
 		node = node.subjectNode
@@ -197,8 +231,7 @@ func (n *evaluationNode) finalized() bool {
 
 // verifiable checks if the verifier is required in the rule.
 func (n *evaluationNode) verifiable(verifier string) bool {
-	_, ok := n.rule.verifiers[verifier]
-	return ok
+	return n.rule.verifiers.Contains(verifier)
 }
 
 // thresholdEvaluator represents the state of the threshold policy during
@@ -217,7 +250,7 @@ type thresholdEvaluator struct {
 
 // verifierIndexKey generates the key for the verifier index.
 func verifierIndexKey(subjectDigest, artifactDigest, verifier string) string {
-	return fmt.Sprintf("%s:%s:%s", subjectDigest, artifactDigest, verifier)
+	return strings.Join([]string{subjectDigest, artifactDigest, verifier}, ":")
 }
 
 // Pruned checks if whether the verifier is required to verify the subject
@@ -308,7 +341,7 @@ func (e *thresholdEvaluator) createEvaluationNodesForSubject(subjectDigest, arti
 	return nodes
 }
 
-func (e *thresholdEvaluator) createEvaluationNode(rule *PolicyRule, subjectDigest, artifactDigest, verifier string, subjectNode *evaluationNode, nodes []*evaluationNode) []*evaluationNode {
+func (e *thresholdEvaluator) createEvaluationNode(rule *ThresholdPolicyRule, subjectDigest, artifactDigest, verifier string, subjectNode *evaluationNode, nodes []*evaluationNode) []*evaluationNode {
 	if verifier != rule.Verifier {
 		return nodes
 	}
@@ -323,8 +356,8 @@ func (e *thresholdEvaluator) createEvaluationNode(rule *PolicyRule, subjectDiges
 	return nodes
 }
 
-func (e *thresholdEvaluator) createVirtualEvaluationNode(rule *PolicyRule, subjectDigest, artifactDigest, verifier string, subjectNode *evaluationNode, nodes []*evaluationNode) []*evaluationNode {
-	if _, ok := rule.verifiers[verifier]; !ok {
+func (e *thresholdEvaluator) createVirtualEvaluationNode(rule *ThresholdPolicyRule, subjectDigest, artifactDigest, verifier string, subjectNode *evaluationNode, nodes []*evaluationNode) []*evaluationNode {
+	if !rule.verifiers.Contains(verifier) {
 		return nodes
 	}
 
@@ -360,27 +393,28 @@ func (e *thresholdEvaluator) Commit(ctx context.Context, subjectDigest string) e
 func (e *thresholdEvaluator) Evaluate(ctx context.Context) (bool, error) {
 	// Refresh the decision for the root node.
 	e.evalGraph.refreshDecision()
-	return e.evalGraph.ruleDecision == PolicyDecisionAllow, nil
+	return e.evalGraph.ruleDecision == thresholdPolicyDecisionAllow, nil
 }
 
 // ThresholdPolicyEnforcer is an implementation of the PolicyEnforcer interface.
 type ThresholdPolicyEnforcer struct {
-	policy *PolicyRule
+	policy *ThresholdPolicyRule
 }
 
 // NewThresholdPolicyEnforcer creates a new ThresholdPolicyEnforcer with the
 // given policy rule. The policy rule must be non-nil.
-func NewThresholdPolicyEnforcer(policy *PolicyRule) (*ThresholdPolicyEnforcer, error) {
+func NewThresholdPolicyEnforcer(policy *ThresholdPolicyRule) (*ThresholdPolicyEnforcer, error) {
 	if err := validatePolicy(policy); err != nil {
 		return nil, err
 	}
-	
+	policy.compile(1)
+
 	return &ThresholdPolicyEnforcer{
-		policy: compilePolicy(policy),
+		policy: policy,
 	}, nil
 }
 
-func validatePolicy(policy *PolicyRule) error {
+func validatePolicy(policy *ThresholdPolicyRule) error {
 	if policy == nil {
 		return fmt.Errorf("policy rule is nil")
 	}
@@ -391,7 +425,7 @@ func validatePolicy(policy *PolicyRule) error {
 	return validateRule(policy)
 }
 
-func validateRule(rule *PolicyRule) error {
+func validateRule(rule *ThresholdPolicyRule) error {
 	if rule == nil {
 		return fmt.Errorf("rule is nil")
 	}
@@ -414,33 +448,6 @@ func validateRule(rule *PolicyRule) error {
 		}
 	}
 	return nil
-}
-
-// compilePolicy compiles the plain policy into a policy that can be used for
-// evaluation directly.
-func compilePolicy(policy *PolicyRule) *PolicyRule {
-	initRuleID := 1
-	_ = updateRules(policy, &initRuleID)
-	return policy
-}
-
-func updateRules(policy *PolicyRule, ruleID *int) map[string]struct{} {
-	policy.ruleID = *ruleID
-	*ruleID++
-
-	verifiers := make(map[string]struct{})
-	for _, childRule := range policy.Rules {
-		childVerifiers := updateRules(childRule, ruleID)
-		for verifier := range childVerifiers {
-			verifiers[verifier] = struct{}{}
-		}
-	}
-	policy.verifiers = verifiers
-
-	if policy.Verifier != "" {
-		return map[string]struct{}{policy.Verifier: {}}
-	}
-	return verifiers
 }
 
 // Evaluator returns a thresholdEvaluator for the given subject digest.

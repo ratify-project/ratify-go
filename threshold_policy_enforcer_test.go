@@ -43,7 +43,7 @@ const (
 func TestNewThresholdPolicyEnforcer(t *testing.T) {
 	tests := []struct {
 		name        string
-		policy      *PolicyRule
+		policy      *ThresholdPolicyRule
 		expectError bool
 	}{
 		{
@@ -53,9 +53,9 @@ func TestNewThresholdPolicyEnforcer(t *testing.T) {
 		},
 		{
 			name: "valid policy with nested rules",
-			policy: &PolicyRule{
+			policy: &ThresholdPolicyRule{
 				Threshold: 1,
-				Rules: []*PolicyRule{
+				Rules: []*ThresholdPolicyRule{
 					{Verifier: "verifier1"},
 					{Verifier: "verifier2"},
 				},
@@ -64,16 +64,16 @@ func TestNewThresholdPolicyEnforcer(t *testing.T) {
 		},
 		{
 			name: "invalid policy with verifier name at root",
-			policy: &PolicyRule{
+			policy: &ThresholdPolicyRule{
 				Verifier: "rootVerifier",
 			},
 			expectError: true,
 		},
 		{
 			name: "invalid policy with negative threshold",
-			policy: &PolicyRule{
+			policy: &ThresholdPolicyRule{
 				Threshold: -1,
-				Rules: []*PolicyRule{
+				Rules: []*ThresholdPolicyRule{
 					{Verifier: "verifier1"},
 				},
 			},
@@ -81,9 +81,9 @@ func TestNewThresholdPolicyEnforcer(t *testing.T) {
 		},
 		{
 			name: "invalid policy with threshold greater than rules count",
-			policy: &PolicyRule{
+			policy: &ThresholdPolicyRule{
 				Threshold: 3,
-				Rules: []*PolicyRule{
+				Rules: []*ThresholdPolicyRule{
 					{Verifier: "verifier1"},
 					{Verifier: "verifier2"},
 				},
@@ -92,7 +92,7 @@ func TestNewThresholdPolicyEnforcer(t *testing.T) {
 		},
 		{
 			name: "invalid policy with no verifier and no nested rules",
-			policy: &PolicyRule{
+			policy: &ThresholdPolicyRule{
 				Threshold: 0,
 			},
 			expectError: true,
@@ -115,9 +115,9 @@ func TestNewThresholdPolicyEnforcer(t *testing.T) {
 	}
 }
 func TestThresholdPolicyEnforcer_Evaluator(t *testing.T) {
-	validPolicy := &PolicyRule{
+	validPolicy := &ThresholdPolicyRule{
 		Threshold: 1,
-		Rules: []*PolicyRule{
+		Rules: []*ThresholdPolicyRule{
 			{Verifier: "verifier1"},
 			{Verifier: "verifier2"},
 		},
@@ -194,24 +194,24 @@ func TestEvaluation(t *testing.T) {
 	//         - verifier: sbom-verifier-3
 	//           rules:
 	//             - verifier: cosign-verifier-1
-	policy := &PolicyRule{
+	policy := &ThresholdPolicyRule{
 		Threshold: 2,
-		Rules: []*PolicyRule{
+		Rules: []*ThresholdPolicyRule{
 			{
 				Verifier: notationVerifier1,
 			},
 			{
 				Verifier: sbomVerifier1,
-				Rules: []*PolicyRule{
+				Rules: []*ThresholdPolicyRule{
 					{
 						Verifier: notationVerifier1,
 					},
 					{
 						Threshold: 1,
-						Rules: []*PolicyRule{
+						Rules: []*ThresholdPolicyRule{
 							{
 								Verifier: sbomVerifier3,
-								Rules: []*PolicyRule{
+								Rules: []*ThresholdPolicyRule{
 									{
 										Verifier: notationVerifier1,
 									},
@@ -219,7 +219,7 @@ func TestEvaluation(t *testing.T) {
 							},
 							{
 								Verifier: sbomVerifier4,
-								Rules: []*PolicyRule{
+								Rules: []*ThresholdPolicyRule{
 									{
 										Verifier: notationVerifier1,
 									},
@@ -229,10 +229,10 @@ func TestEvaluation(t *testing.T) {
 					},
 					{
 						Threshold: 1,
-						Rules: []*PolicyRule{
+						Rules: []*ThresholdPolicyRule{
 							{
 								Verifier: sbomVerifier3,
-								Rules: []*PolicyRule{
+								Rules: []*ThresholdPolicyRule{
 									{
 										Verifier: notationVerifier1,
 									},
@@ -240,7 +240,7 @@ func TestEvaluation(t *testing.T) {
 							},
 							{
 								Verifier: sbomVerifier5,
-								Rules: []*PolicyRule{
+								Rules: []*ThresholdPolicyRule{
 									{
 										Verifier: notationVerifier1,
 									},
@@ -252,13 +252,13 @@ func TestEvaluation(t *testing.T) {
 			},
 			{
 				Verifier: sbomVerifier2,
-				Rules: []*PolicyRule{
+				Rules: []*ThresholdPolicyRule{
 					{
 						Verifier: cosignVerifier1,
 					},
 					{
 						Verifier: sbomVerifier1,
-						Rules: []*PolicyRule{
+						Rules: []*ThresholdPolicyRule{
 							{
 								Verifier: cosignVerifier1,
 							},
