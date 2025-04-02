@@ -43,11 +43,15 @@ const (
 
 // mockVerifier is a mock implementation of Verifier.
 type mockVerifier struct {
+	name string
 	verifiable   bool
 	verifyResult map[string]*VerificationResult
 }
 
 func (m *mockVerifier) Name() string {
+	if m.name != "" {
+		return m.name
+	}
 	return "mock-verifier-name"
 }
 
