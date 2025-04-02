@@ -66,6 +66,24 @@ type ThresholdPolicyRule struct {
 	ruleID int
 }
 
+// deepCopy creates a deep copy of the ThresholdPolicyRule with all exposed 
+// fields.
+func (r *ThresholdPolicyRule) deepCopy() *ThresholdPolicyRule {
+	if r == nil {
+		return nil
+	}
+
+	rule := &ThresholdPolicyRule{
+		Verifier:   r.Verifier,
+		Threshold:  r.Threshold,
+		Rules:      make([]*ThresholdPolicyRule, len(r.Rules)),
+	}
+	for i, childRule := range r.Rules {
+		rule.Rules[i] = childRule.deepCopy()
+	}
+	return rule
+}
+
 // compile compiles the policy rule by assigning unique IDs and aggregating
 // verifiers from nested rules recursively.
 func (r *ThresholdPolicyRule) compile(ruleID int) (*set.Set[string], int) {
@@ -407,10 +425,12 @@ func NewThresholdPolicyEnforcer(policy *ThresholdPolicyRule) (*ThresholdPolicyEn
 	if err := validatePolicy(policy); err != nil {
 		return nil, err
 	}
-	policy.compile(1)
 
+	copiedPolicy := policy.deepCopy()
+	copiedPolicy.compile(1)
+	
 	return &ThresholdPolicyEnforcer{
-		policy: policy,
+		policy: copiedPolicy,
 	}, nil
 }
 
