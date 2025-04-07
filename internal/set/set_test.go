@@ -19,8 +19,20 @@ import (
 	"testing"
 )
 
+func TestNewSet(t *testing.T) {
+	s := New(1, 2, 3)
+	if len(s) != 3 {
+		t.Errorf("expected set length 3, got %d", len(s))
+	}
+	for _, v := range []int{1, 2, 3} {
+		if !s.Contains(v) {
+			t.Errorf("expected set to contain %d", v)
+		}
+	}
+}
+
 func TestSetContains(t *testing.T) {
-	s := NewSet("a", "b", "c")
+	s := New("a", "b", "c")
 	tests := []struct {
 		elem     string
 		expected bool
@@ -32,56 +44,46 @@ func TestSetContains(t *testing.T) {
 
 	for _, tt := range tests {
 		if got := s.Contains(tt.elem); got != tt.expected {
-			t.Errorf("Contains(%q) = %v, want %v", tt.elem, got, tt.expected)
+			t.Errorf("Contains(%q) = %v; want %v", tt.elem, got, tt.expected)
 		}
 	}
 }
 
 func TestSetAdd(t *testing.T) {
-	s := NewSet[int]()
-	s.Add(1, 2, 3)
-	if len(*s) != 3 {
-		t.Errorf("Add() expected length 3, got %d", len(*s))
-	}
-	s.Add(3, 4)
-	if len(*s) != 4 {
-		t.Errorf("Add() expected length 4 after adding duplicate, got %d", len(*s))
-	}
-	if !s.Contains(4) {
-		t.Errorf("Add() missing element 4 after adding")
-	}
-}
+	s1 := New(1, 2)
+	s2 := New(2, 3, 4)
 
-func TestSetCopy(t *testing.T) {
-	src := NewSet(1, 2, 3)
-	dest := NewSet[int]()
-	dest.Copy(src)
+	s1.Union(s2)
 
-	if len(*dest) != len(*src) {
-		t.Errorf("Copy() expected length %d, got %d", len(*src), len(*dest))
-	}
-
-	for k := range *src {
-		if !dest.Contains(k) {
-			t.Errorf("Copy() missing element %d in destination set", k)
+	expectedElems := []int{1, 2, 3, 4}
+	for _, v := range expectedElems {
+		if !s1.Contains(v) {
+			t.Errorf("expected set to contain %d after Add", v)
 		}
 	}
+
+	if len(s1) != 4 {
+		t.Errorf("expected set length 4 after Add, got %d", len(s1))
+	}
 }
 
-func TestSetEmpty(t *testing.T) {
-	s := NewSet[int]()
-	if len(*s) != 0 {
-		t.Errorf("NewSet() expected empty set, got length %d", len(*s))
+func TestEmptySet(t *testing.T) {
+	s := New[int]()
+	if len(s) != 0 {
+		t.Errorf("expected empty set length 0, got %d", len(s))
 	}
 	if s.Contains(1) {
-		t.Errorf("Empty set should not contain any elements")
+		t.Errorf("expected empty set not to contain any elements")
 	}
 }
 
-func TestSetAddDuplicate(t *testing.T) {
-	s := NewSet("a")
-	s.Add("a", "a")
-	if len(*s) != 1 {
-		t.Errorf("Add() expected length 1 after adding duplicates, got %d", len(*s))
+func TestAddEmptySet(t *testing.T) {
+	s1 := New(1, 2)
+	s2 := New[int]()
+
+	s1.Union(s2)
+
+	if len(s1) != 2 {
+		t.Errorf("expected set length 2 after adding empty set, got %d", len(s1))
 	}
 }

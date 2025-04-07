@@ -59,14 +59,14 @@ type ThresholdPolicyRule struct {
 
 	// verifiers hold the verifiers that are available in the nested rules with
 	// Verifier set. It's auto generated during the compilation of the policy.
-	verifiers *set.Set[string]
+	verifiers set.Set[string]
 
 	// ruleID is the unique ID of the rule in the policy tree. It's auto
 	// generatd during the compilation of the policy.
 	ruleID int
 }
 
-// deepCopy creates a deep copy of the ThresholdPolicyRule with all exposed 
+// deepCopy creates a deep copy of the ThresholdPolicyRule with all exposed
 // fields.
 func (r *ThresholdPolicyRule) deepCopy() *ThresholdPolicyRule {
 	if r == nil {
@@ -74,9 +74,9 @@ func (r *ThresholdPolicyRule) deepCopy() *ThresholdPolicyRule {
 	}
 
 	rule := &ThresholdPolicyRule{
-		Verifier:   r.Verifier,
-		Threshold:  r.Threshold,
-		Rules:      make([]*ThresholdPolicyRule, len(r.Rules)),
+		Verifier:  r.Verifier,
+		Threshold: r.Threshold,
+		Rules:     make([]*ThresholdPolicyRule, len(r.Rules)),
 	}
 	for i, childRule := range r.Rules {
 		rule.Rules[i] = childRule.deepCopy()
@@ -86,20 +86,20 @@ func (r *ThresholdPolicyRule) deepCopy() *ThresholdPolicyRule {
 
 // compile compiles the policy rule by assigning unique IDs and aggregating
 // verifiers from nested rules recursively.
-func (r *ThresholdPolicyRule) compile(ruleID int) (*set.Set[string], int) {
+func (r *ThresholdPolicyRule) compile(ruleID int) (set.Set[string], int) {
 	r.ruleID = ruleID
 	ruleID++
 
-	verifiers := set.NewSet[string]()
+	verifiers := set.New[string]()
 	for _, childRule := range r.Rules {
-		var childVerifiers *set.Set[string]
+		var childVerifiers set.Set[string]
 		childVerifiers, ruleID = childRule.compile(ruleID)
-		verifiers.Copy(childVerifiers)
+		verifiers.Union(childVerifiers)
 	}
 	r.verifiers = verifiers
 
 	if r.Verifier != "" {
-		return set.NewSet(r.Verifier), ruleID
+		return set.New(r.Verifier), ruleID
 	}
 	return verifiers, ruleID
 }
@@ -428,7 +428,7 @@ func NewThresholdPolicyEnforcer(policy *ThresholdPolicyRule) (*ThresholdPolicyEn
 
 	copiedPolicy := policy.deepCopy()
 	copiedPolicy.compile(1)
-	
+
 	return &ThresholdPolicyEnforcer{
 		policy: copiedPolicy,
 	}, nil
