@@ -396,11 +396,7 @@ func (e *thresholdEvaluator) createVirtualEvaluationNode(rule *ThresholdPolicyRu
 // In multi goroutine mode, commited node cannot be refreshed as it may need
 // more verification results to make a decision.
 func (e *thresholdEvaluator) Commit(ctx context.Context, subjectDigest string) error {
-	nodes, ok := e.subjectIndex[subjectDigest]
-	if !ok {
-		return fmt.Errorf("subject: %s has not been processed yet", subjectDigest)
-	}
-	for _, node := range nodes {
+	for _, node := range e.subjectIndex[subjectDigest] {
 		node.commited = true
 		node.refreshDecision()
 	}

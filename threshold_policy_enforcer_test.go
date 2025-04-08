@@ -164,6 +164,78 @@ func TestThresholdPolicyEnforcer_Evaluator(t *testing.T) {
 	}
 }
 
+func TestEvaluation_SingleSignature(t *testing.T) {
+	// The testing policy can be represented in yaml as:
+	// - rules:
+	//    - verifier: notation-verifier-1
+	policy := &ThresholdPolicyRule{
+		Rules: []*ThresholdPolicyRule{
+			{
+				Verifier: notationVerifier1,
+			},
+		},
+	}
+
+	// The image that will be tested against the policy is in the following
+	// structure:
+	// image-digest
+	// └── notation-digest-1
+	enforcer, err := NewThresholdPolicyEnforcer(policy)
+	if err != nil {
+		t.Fatalf("unexpected error creating enforcer: %v", err)
+	}
+	ctx := context.Background()
+	evaluator, err := enforcer.Evaluator(ctx, imageDigest)
+	if err != nil {
+		t.Fatalf("unexpected error creating evaluator: %v", err)
+	}
+
+	state, err := evaluator.Pruned(ctx, imageDigest, notationDigest1, notationVerifier1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if state != PrunedStateNone {
+		t.Fatalf("expected none pruned state, got %v", state)
+	}
+
+	// Add a failed verification result.
+	// This should not affect the evaluation.
+	result := &VerificationResult{
+		Verifier: &mockVerifier{name: notationVerifier1},
+		Err:      errors.New("verification error"),
+	}
+	if err = evaluator.AddResult(ctx, imageDigest, notationDigest1, result); err != nil {
+		t.Fatalf("unexpected error adding result: %v", err)
+	}
+	if err = evaluator.Commit(ctx, notationDigest1); err != nil {
+		t.Fatalf("unexpected error committing: %v", err)
+	}
+
+	// Add a successful verification result.
+	// This should affect the evaluation.
+	result = &VerificationResult{
+		Verifier: &mockVerifier{name: notationVerifier1},
+	}
+	if err = evaluator.AddResult(ctx, imageDigest, notationDigest1, result); err != nil {
+		t.Fatalf("unexpected error adding result: %v", err)
+	}
+	if err = evaluator.Commit(ctx, notationDigest1); err != nil {
+		t.Fatalf("unexpected error committing: %v", err)
+	}
+	if err = evaluator.Commit(ctx, imageDigest); err != nil {
+		t.Fatalf("unexpected error committing: %v", err)
+	}
+
+	// Evaluate the results.
+	decision, err := evaluator.Evaluate(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error evaluating: %v", err)
+	}
+	if decision != true {
+		t.Fatalf("expected decision true, got %v", decision)
+	}
+}
+
 func TestEvaluation(t *testing.T) {
 	// The testing policy can be represented in yaml as:
 	// - threshold: 2
