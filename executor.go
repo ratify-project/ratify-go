@@ -185,6 +185,14 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 			if errors.Is(err, errSubjectPruned) {
 				return errSubjectPruned
 			}
+
+			if len(results) == 0 {
+				// If no results are generated, the artifact has no valid verifiers or is not configured
+				// in the policy enforcer. Therefore, its referrers will not influence the validation
+				// result of the subject artifact and can be skipped.
+				continue
+			}
+
 			referrerArtifact := task.artifact
 			referrerArtifact.Reference = referrer.Digest.String()
 			newTasks = append(newTasks, &executorTask{
