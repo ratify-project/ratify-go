@@ -43,7 +43,7 @@ const (
 
 // mockVerifier is a mock implementation of Verifier.
 type mockVerifier struct {
-	name string
+	name         string
 	verifiable   bool
 	verifyResult map[string]*VerificationResult
 }
@@ -746,6 +746,10 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
+				// Referrers structure:
+				// testImage
+				//     ├──> testArtifact2 ─> testArtifact4 ─> testArtifact5
+				//     └──> testArtifact3
 				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
 						{
@@ -801,22 +805,10 @@ func TestValidateArtifact(t *testing.T) {
 						},
 						ArtifactReports: []*ValidationReport{},
 					},
+					// testArtifact2 is pruned, so it and its nested artifacts
+					// are not reported
 					{
-						ArtifactReports: []*ValidationReport{{
-							Results: []*VerificationResult{
-								{
-									Description: validMessage4,
-								},
-							},
-							ArtifactReports: []*ValidationReport{{
-								Results: []*VerificationResult{
-									{
-										Description: validMessage5,
-									},
-								},
-								ArtifactReports: []*ValidationReport{},
-							}},
-						}},
+						ArtifactReports: []*ValidationReport{},
 					},
 				}},
 			wantErr: false,
