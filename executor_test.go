@@ -660,6 +660,10 @@ func TestValidateArtifact(t *testing.T) {
 						Digest: testDigest1,
 					},
 				},
+				// Referrers structure:
+				// testImage
+				// ├──> testArtifact2 ─> testArtifact4 ─> testArtifact5
+				// └──> testArtifact3
 				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
 						{
@@ -716,21 +720,7 @@ func TestValidateArtifact(t *testing.T) {
 						ArtifactReports: []*ValidationReport{},
 					},
 					{
-						ArtifactReports: []*ValidationReport{{
-							Results: []*VerificationResult{
-								{
-									Description: validMessage4,
-								},
-							},
-							ArtifactReports: []*ValidationReport{{
-								Results: []*VerificationResult{
-									{
-										Description: validMessage5,
-									},
-								},
-								ArtifactReports: []*ValidationReport{},
-							}},
-						}},
+						ArtifactReports: []*ValidationReport{},
 					},
 				}},
 			wantErr: false,
@@ -748,8 +738,8 @@ func TestValidateArtifact(t *testing.T) {
 				},
 				// Referrers structure:
 				// testImage
-				//     ├──> testArtifact2 ─> testArtifact4 ─> testArtifact5
-				//     └──> testArtifact3
+				// ├──> testArtifact2 ─> testArtifact4 ─> testArtifact5
+				// └──> testArtifact3
 				digestToReferrers: map[string][]ocispec.Descriptor{
 					testArtifact1: {
 						{
