@@ -1137,3 +1137,97 @@ func TestValidateArtifact_SBoMNotConfigured_WithThresholdPolicy(t *testing.T) {
 		t.Errorf("ValidateArtifact() got = %v, want %v", got, want)
 	}
 }
+
+func TestValidateArtifact_SubjectPrunedWithPreviousVerifierReport(t *testing.T) {
+	policy := &ThresholdPolicyRule{
+		Threshold: 1,
+		Rules: []*ThresholdPolicyRule{
+			{
+				Verifier: "sig-verifier",
+			},
+		},
+	}
+
+	enforcer, err := NewThresholdPolicyEnforcer(policy)
+	if err != nil {
+		t.Fatalf("Failed to create ThresholdPolicyEnforcer: %v", err)
+	}
+
+	store := &mockStore{
+		tagToDesc: map[string]ocispec.Descriptor{
+			testImage: {
+				Digest:       testDigest1,
+				ArtifactType: "application/vnd.oci.image.manifest.v1+json",
+			},
+		},
+		// Referrers structure:
+		// testImage
+		// └── testArtifact2 (sig)
+		digestToReferrers: map[string][]ocispec.Descriptor{
+			testArtifact1: {
+				{
+					Digest:       testDigest2, // sig
+					ArtifactType: artifactTypeSig,
+				},
+			},
+		},
+	}
+
+	// more than one verifier for signature
+	verifiers := []Verifier{
+		&mockVerifier{
+			name:            "sig-verifier",
+			verifiableTypes: []string{artifactTypeSig},
+			verifyResult: map[string]*VerificationResult{
+				testDigest2: {
+					Description: validMessage2,
+					Verifier: &mockVerifier{
+						name: "sig-verifier",
+					},
+				},
+			},
+		},
+		&mockVerifier{
+			name:            "sig-verifier2",
+			verifiableTypes: []string{artifactTypeSig},
+			verifyResult: map[string]*VerificationResult{
+				testDigest2: {
+					Description: "other message",
+					Verifier: &mockVerifier{
+						name: "sig-verifier2",
+					},
+				},
+			},
+		},
+	}
+
+	executor, err := NewExecutor(store, verifiers, enforcer)
+	if err != nil {
+		t.Fatalf("Failed to create executor: %v", err)
+	}
+
+	opts := ValidateArtifactOptions{
+		Subject: testImage,
+	}
+
+	got, err := executor.ValidateArtifact(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("ValidateArtifact() error = %v, wantErr false", err)
+	}
+
+	want := &ValidationResult{
+		Succeeded: true,
+		ArtifactReports: []*ValidationReport{
+			{
+				Results: []*VerificationResult{
+					{Description: validMessage2},
+				},
+				ArtifactReports: []*ValidationReport{},
+			},
+		},
+	}
+
+	if !sameValidationResult(got, want) {
+		t.Errorf("ValidateArtifact() got = %v, want %v", got, want)
+	}
+}
