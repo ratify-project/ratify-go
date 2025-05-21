@@ -359,8 +359,8 @@ func TestEvaluation(t *testing.T) {
 		t.Fatalf("unexpected error creating evaluator: %v", err)
 	}
 
-	if _, err = evaluator.Pruned(ctx, sbomDigest1, notationDigest1, notationVerifier1); err == nil {
-		t.Fatalf("expected error, got none")
+	if state, err := evaluator.Pruned(ctx, sbomDigest1, notationDigest1, notationVerifier1); err != nil || state != PrunedStateSubjectPruned {
+		t.Fatalf("expected no error and subject pruned state, got error: %v, state: %v", err, state)
 	}
 
 	state, err := evaluator.Pruned(ctx, imageDigest, notationDigest1, notationVerifier2)
