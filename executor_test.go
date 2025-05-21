@@ -1099,7 +1099,7 @@ func TestValidateArtifact_SBoMNotConfigured_WithThresholdPolicy(t *testing.T) {
 				},
 			},
 		},
-		// No verifier for SBoM (artifactTypeSBoMActual) is configured
+		// No verifier for SBoM (artifactTypeSBoM) is configured
 	}
 
 	executor, err := NewExecutor(store, verifiers, enforcer)
