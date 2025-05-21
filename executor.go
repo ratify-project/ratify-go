@@ -188,7 +188,6 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 					artifactReports = append(artifactReports, artifactReport)
 					return errSubjectPruned
 				}
-
 				return err
 			}
 
