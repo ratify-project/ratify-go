@@ -47,8 +47,8 @@ const (
 // mockVerifier is a mock implementation of Verifier.
 type mockVerifier struct {
 	name            string
-	verifiable      bool     // Existing field
-	verifiableTypes []string // New: list of artifact types this verifier can handle
+	verifiable      bool
+	verifiableTypes []string
 	verifyResult    map[string]*VerificationResult
 }
 
@@ -1033,10 +1033,11 @@ func TestValidateExecutorSetup(t *testing.T) {
 
 func TestValidateArtifact_SBoMNotConfigured_WithThresholdPolicy(t *testing.T) {
 	policy := &ThresholdPolicyRule{
-		Threshold: 1, // OR condition for the top-level rules
+		Threshold: 1,
 		Rules: []*ThresholdPolicyRule{
 			{
-				Verifier: "sig-verifier", // Rule for direct signature on the image
+				// only configured the verifier for signature
+				Verifier: "sig-verifier",
 			},
 		},
 	}
