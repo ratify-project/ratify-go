@@ -171,10 +171,25 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
 			results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator)
-			if err != nil && !errors.Is(err, errSubjectPruned) {
+			if err != nil {
+				if errors.Is(err, errSubjectPruned) {
+					if len(results) == 0 {
+						return errSubjectPruned
+					}
+
+					artifactReport := &ValidationReport{
+						Subject:  artifact,
+						Results:  results,
+						Artifact: referrer,
+					}
+					artifactReports = append(artifactReports, artifactReport)
+					return errSubjectPruned
+				}
+
 				return err
 			}
 
+			// Create artifact report for successful verification
 			artifactReport := &ValidationReport{
 				Subject:  artifact,
 				Results:  results,
@@ -182,9 +197,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 			}
 			artifactReports = append(artifactReports, artifactReport)
 
-			if errors.Is(err, errSubjectPruned) {
-				return errSubjectPruned
-			}
+			// Add a new task for the verified referrer artifact
 			referrerArtifact := task.artifact
 			referrerArtifact.Reference = referrer.Digest.String()
 			newTasks = append(newTasks, &executorTask{

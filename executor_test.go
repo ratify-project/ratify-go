@@ -905,7 +905,7 @@ func TestValidateArtifact(t *testing.T) {
 								Description: validMessage2,
 							},
 						},
-						ArtifactReports: []*ValidationReport{{}},
+						ArtifactReports: []*ValidationReport{},
 					},
 				}},
 			wantErr: false,
@@ -1121,16 +1121,8 @@ func TestValidateArtifact_SBoMNotConfigured_WithThresholdPolicy(t *testing.T) {
 		ArtifactReports: []*ValidationReport{
 			{
 				// empty result for SBoM as no verifier is configured
-				Results: []*VerificationResult{},
-				ArtifactReports: []*ValidationReport{
-					{
-						// empty result for SBoM's sig as no parent node
-						Results:         []*VerificationResult{},
-						ArtifactReports: []*ValidationReport{
-							// should no sub-reports for testArtifact5 as has been pruned
-						},
-					},
-				},
+				Results:         []*VerificationResult{},
+				ArtifactReports: []*ValidationReport{},
 			},
 			{
 				Results: []*VerificationResult{
