@@ -1059,7 +1059,7 @@ func TestValidateArtifact_SBoMNotConfigured_WithThresholdPolicy(t *testing.T) {
 		// ├── testArtifact3 (SBoM)
 		// │   └── testArtifact4 (sig)
 		// │       └── testArtifact5
-		// └─── testArtifact2 (sig)
+		// └── testArtifact2 (sig)
 		digestToReferrers: map[string][]ocispec.Descriptor{
 			testArtifact1: {
 				{
