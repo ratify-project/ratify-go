@@ -177,6 +177,9 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 						return errSubjectPruned
 					}
 
+					// it is possible that one or some verifiers' reports in the
+					// results and the next verifier triggers the subject pruned state,
+					// so the results are not empty.
 					artifactReport := &ValidationReport{
 						Subject:  artifact,
 						Results:  results,
@@ -189,7 +192,6 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 				return err
 			}
 
-			// Create artifact report for successful verification
 			artifactReport := &ValidationReport{
 				Subject:  artifact,
 				Results:  results,
@@ -197,7 +199,6 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 			}
 			artifactReports = append(artifactReports, artifactReport)
 
-			// Add a new task for the verified referrer artifact
 			referrerArtifact := task.artifact
 			referrerArtifact.Reference = referrer.Digest.String()
 			newTasks = append(newTasks, &executorTask{
