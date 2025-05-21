@@ -279,7 +279,7 @@ func (e *thresholdEvaluator) Pruned(ctx context.Context, subjectDigest, artifact
 	}
 	nodes, ok := e.subjectIndex[subjectDigest]
 	if !ok {
-		return PrunedStateNone, fmt.Errorf("no applicable policy rule defined for the subject %s", subjectDigest)
+		return PrunedStateSubjectPruned, nil
 	}
 
 	// Return PrunedStateSubjectPruned if all nodes are finalized.

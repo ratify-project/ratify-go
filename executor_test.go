@@ -24,28 +24,32 @@ import (
 )
 
 const (
-	testRepo      = "test-registry/test-repo"
-	testDigest1   = "sha256:cd0abf4135161b8aeb079b64b8215e433088d21463204771d070aadc52678aa0"
-	testDigest2   = "sha256:e05b6fbf2432faf87115041d172aa1f587cff725b94c61d927f67c21e1e2d5b9"
-	testDigest3   = "sha256:5ca41da4799a48a58ec307678155c52a37caad54492a96854b14d8c856a8c5d8"
-	testDigest4   = "sha256:97fd9660fd193c8671ffa322453bf21e46ab8ab6543f82b065caa7f014155bc4"
-	testDigest5   = "sha256:87f06eb9e99f17e1a57346c388d60e636a725f7d9bce33fb90e54156d36297e9"
-	testImage     = testRepo + ":v1"
-	testArtifact1 = testRepo + "@" + testDigest1
-	testArtifact2 = testRepo + "@" + testDigest2
-	testArtifact4 = testRepo + "@" + testDigest4
-	validMessage1 = "valid signature 1"
-	validMessage2 = "valid signature 2"
-	validMessage3 = "valid signature 3"
-	validMessage4 = "valid signature 4"
-	validMessage5 = "valid signature 5"
+	testRepo               = "test-registry/test-repo"
+	testDigest1            = "sha256:cd0abf4135161b8aeb079b64b8215e433088d21463204771d070aadc52678aa0"
+	testDigest2            = "sha256:e05b6fbf2432faf87115041d172aa1f587cff725b94c61d927f67c21e1e2d5b9"
+	testDigest3            = "sha256:5ca41da4799a48a58ec307678155c52a37caad54492a96854b14d8c856a8c5d8"
+	testDigest4            = "sha256:97fd9660fd193c8671ffa322453bf21e46ab8ab6543f82b065caa7f014155bc4"
+	testDigest5            = "sha256:87f06eb9e99f17e1a57346c388d60e636a725f7d9bce33fb90e54156d36297e9"
+	testImage              = testRepo + ":v1"
+	testArtifact1          = testRepo + "@" + testDigest1
+	testArtifact2          = testRepo + "@" + testDigest2
+	testArtifact3          = testRepo + "@" + testDigest3
+	testArtifact4          = testRepo + "@" + testDigest4
+	validMessage1          = "valid signature 1"
+	validMessage2          = "valid signature 2"
+	validMessage3          = "valid signature 3"
+	validMessage4          = "valid signature 4"
+	validMessage5          = "valid signature 5"
+	artifactTypeSigActual  = "application/vnd.dev.ratify.signature.v1+json"
+	artifactTypeSBoMActual = "application/vnd.dev.ratify.sbom.v1+json"
 )
 
 // mockVerifier is a mock implementation of Verifier.
 type mockVerifier struct {
-	name string
-	verifiable   bool
-	verifyResult map[string]*VerificationResult
+	name            string
+	verifiable      bool     // Existing field
+	verifiableTypes []string // New: list of artifact types this verifier can handle
+	verifyResult    map[string]*VerificationResult
 }
 
 func (m *mockVerifier) Name() string {
@@ -59,8 +63,16 @@ func (m *mockVerifier) Type() string {
 	return "mock-verifier-type"
 }
 
-func (m *mockVerifier) Verifiable(_ ocispec.Descriptor) bool {
-	return m.verifiable
+func (m *mockVerifier) Verifiable(desc ocispec.Descriptor) bool { // MODIFIED
+	if len(m.verifiableTypes) > 0 {
+		for _, validType := range m.verifiableTypes {
+			if desc.ArtifactType == validType {
+				return true
+			}
+		}
+		return false
+	}
+	return m.verifiable // Fallback to existing behavior for other tests
 }
 
 func (m *mockVerifier) Verify(ctx context.Context, opts *VerifyOptions) (*VerificationResult, error) {
@@ -1016,5 +1028,115 @@ func TestValidateExecutorSetup(t *testing.T) {
 				t.Errorf("validateExecutorSetup() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateArtifact_SBoMNotConfigured_WithThresholdPolicy(t *testing.T) {
+	policy := &ThresholdPolicyRule{
+		Threshold: 1, // OR condition for the top-level rules
+		Rules: []*ThresholdPolicyRule{
+			{
+				Verifier: "sig-verifier", // Rule for direct signature on the image
+			},
+		},
+	}
+
+	enforcer, err := NewThresholdPolicyEnforcer(policy)
+	if err != nil {
+		t.Fatalf("Failed to create ThresholdPolicyEnforcer: %v", err)
+	}
+
+	store := &mockStore{
+		tagToDesc: map[string]ocispec.Descriptor{
+			testImage: {
+				Digest:       testDigest1,
+				ArtifactType: "application/vnd.oci.image.manifest.v1+json",
+			},
+		},
+		// Referrers for the image
+		// testImage
+		// ├── testArtifact3 (no-verifier)
+		// │   └── testArtifact4 (sig-verfier)
+		// │       └── testArtifact5 (should not be included in the report)
+		// └─── testArtifact2 (sig-verifier)
+		digestToReferrers: map[string][]ocispec.Descriptor{
+			testArtifact1: {
+				{
+					Digest:       testDigest3, // SBoM
+					ArtifactType: artifactTypeSBoMActual,
+				},
+				{
+					Digest:       testDigest2, // sig
+					ArtifactType: artifactTypeSigActual,
+				},
+			},
+			testArtifact3: {
+				{
+					Digest:       testDigest4,
+					ArtifactType: artifactTypeSigActual,
+				},
+			},
+			testArtifact4: {
+				{
+					Digest: testDigest5,
+				},
+			},
+		},
+	}
+
+	verifiers := []Verifier{
+		&mockVerifier{
+			name:            "sig-verifier",
+			verifiableTypes: []string{artifactTypeSigActual},
+			verifyResult: map[string]*VerificationResult{
+				testDigest2: {
+					Description: validMessage2,
+					Verifier: &mockVerifier{
+						name: "sig-verifier",
+					},
+				}, // sig for image
+			},
+		},
+		// No verifier for SBoM (artifactTypeSBoMActual) is configured
+	}
+
+	executor, err := NewExecutor(store, verifiers, enforcer)
+	if err != nil {
+		t.Fatalf("Failed to create executor: %v", err)
+	}
+
+	opts := ValidateArtifactOptions{
+		Subject:        testImage,
+		ReferenceTypes: []string{artifactTypeSBoMActual, artifactTypeSigActual},
+	}
+
+	got, err := executor.ValidateArtifact(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("ValidateArtifact() error = %v, wantErr false", err)
+	}
+
+	want := &ValidationResult{
+		Succeeded: true, // Policy requires OR, and sig for image is present and verified.
+		ArtifactReports: []*ValidationReport{
+			{ // Report for SBoM (testDigest3)
+				Results: []*VerificationResult{}, // SBoM itself is not verified by any verifier
+				ArtifactReports: []*ValidationReport{
+					{ // Report for SBoM's signature (testDigest4)
+						Results:         []*VerificationResult{},
+						ArtifactReports: []*ValidationReport{},
+					},
+				},
+			},
+			{ // Report for image's direct signature (testDigest2)
+				Results: []*VerificationResult{
+					{Description: validMessage2},
+				},
+				ArtifactReports: []*ValidationReport{},
+			},
+		},
+	}
+
+	if !sameValidationResult(got, want) {
+		t.Errorf("ValidateArtifact() got = %v, want %v", got, want)
 	}
 }
