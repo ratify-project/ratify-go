@@ -171,31 +171,21 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
 			results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator)
-			if err != nil {
-				if errors.Is(err, errSubjectPruned) {
-					if len(results) == 0 {
-						return errSubjectPruned
-					}
-
-					// it is possible that one or some verifiers' reports in the
-					// results and the next verifier triggers the subject pruned state,
-					// so the results are not empty.
-					artifactReport := &ValidationReport{
-						Subject:  artifact,
-						Results:  results,
-						Artifact: referrer,
-					}
-					artifactReports = append(artifactReports, artifactReport)
-					return errSubjectPruned
-				}
-				return err
-			}
-
 			artifactReport := &ValidationReport{
 				Subject:  artifact,
 				Results:  results,
 				Artifact: referrer,
 			}
+			if err != nil {
+				if errors.Is(err, errSubjectPruned) && len(results) > 0 {
+					// it is possible that one or some verifiers' reports in the
+					// results and the next verifier triggers the subject pruned state,
+					// so the results are not empty.
+					artifactReports = append(artifactReports, artifactReport)
+				}
+				return err
+			}
+
 			artifactReports = append(artifactReports, artifactReport)
 
 			referrerArtifact := task.artifact
