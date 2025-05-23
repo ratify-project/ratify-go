@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"testing/fstest"
 
-	"github.com/ratify-project/ratify-go"
+	"github.com/notaryproject/ratify-go"
 )
 
 func ExampleStoreMux() {
