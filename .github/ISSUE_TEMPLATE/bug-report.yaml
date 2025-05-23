@@ -19,7 +19,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for taking the time to fill out this issue report. 🛑 Please check existing issues first before continuing: https://github.com/ratify-project/ratify-go/issues
+        Thank you for taking the time to fill out this issue report. 🛑 Please check existing issues first before continuing: https://github.com/notaryproject/ratify-go/issues
   - type: textarea
     id: verbatim
     validations:
