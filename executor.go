@@ -20,8 +20,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/notaryproject/ratify-go/internal/stack"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/ratify-project/ratify-go/internal/stack"
 	"oras.land/oras-go/v2/registry"
 )
 
