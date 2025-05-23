@@ -422,6 +422,10 @@ func TestEvaluation(t *testing.T) {
 		t.Fatalf("unexpected error adding result: %v", err)
 	}
 
+	if err = evaluator.Commit(ctx, imageDigest); err != nil {
+		t.Fatalf("unexpected error committing: %v", err)
+	}
+
 	state, err = evaluator.Pruned(ctx, sbomDigest1, notationDigest2, notationVerifier1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -444,6 +448,10 @@ func TestEvaluation(t *testing.T) {
 		t.Fatalf("unexpected error adding result: %v", err)
 	}
 
+	if err = evaluator.Commit(ctx, sbomDigest1); err != nil {
+		t.Fatalf("unexpected error committing: %v", err)
+	}
+
 	state, err = evaluator.Pruned(ctx, sbomDigest2, notationDigest3, notationVerifier1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -463,15 +471,15 @@ func TestEvaluation(t *testing.T) {
 		t.Fatalf("expected subject pruned state, got %v", state)
 	}
 
+	if err = evaluator.Commit(ctx, sbomDigest2); err != nil {
+		t.Fatalf("unexpected error committing: %v", err)
+	}
+
 	decision, err = evaluator.Evaluate(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error evaluating: %v", err)
 	}
 	if decision != true {
 		t.Fatalf("expected decision true, got %v", decision)
-	}
-
-	if err = evaluator.Commit(ctx, imageDigest); err != nil {
-		t.Fatalf("unexpected error committing: %v", err)
 	}
 }

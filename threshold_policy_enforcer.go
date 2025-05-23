@@ -106,7 +106,8 @@ func (r *ThresholdPolicyRule) compile(ruleID int) (set.Set[string], int) {
 
 // evaluationNode holds the statistics for a policy rule during evaluation.
 // An evaluationNode is regarded as a virtual node if it corresponds to a rule
-// without Verifier set.
+// without Verifier set. A virtual node will set artifactDigest to empty since
+// it doesn't correspond to a specific artifact.
 type evaluationNode struct {
 	// rule is the policy rule for this node.
 	rule *ThresholdPolicyRule
@@ -131,7 +132,8 @@ type evaluationNode struct {
 	// by rule ID.
 	childNodes map[int][]*evaluationNode
 
-	// commited indicates whether the node is commited or not.
+	// commited indicates whether more child (virtual) nodes will be added to
+	// this node. If set to true, no more child nodes will be added to it.
 	commited bool
 }
 
@@ -148,6 +150,8 @@ func (n *evaluationNode) addChildNode(rule *ThresholdPolicyRule, artifactDigest 
 		node.childVirtualNodes = make(map[int]*evaluationNode)
 	}
 
+	// A nested rule with verifier set could match multiple artifacts of the
+	// same artifactType.
 	n.childNodes[rule.ruleID] = append(n.childNodes[rule.ruleID], node)
 	return node
 }
@@ -181,18 +185,30 @@ func (n *evaluationNode) calculateDecision() thresholdPolicyDecision {
 	}
 
 	successfulRuleCount := 0
+	undeterminedRuleCount := 0
 	for _, nodes := range n.childNodes {
 		// validate each rule
+		successfuleRuleFound := false
+		undeterminedRuleFound := false
 		for _, node := range nodes {
 			if node.ruleDecision == thresholdPolicyDecisionAllow {
-				successfulRuleCount++
-				break
+				successfuleRuleFound = true
+			} else if node.ruleDecision == thresholdPolicyDecisionUndetermined {
+				undeterminedRuleFound = true
 			}
+		}
+		if successfuleRuleFound {
+			successfulRuleCount++
+		}
+		if undeterminedRuleFound {
+			undeterminedRuleCount++
 		}
 	}
 	for _, node := range n.childVirtualNodes {
 		if node.ruleDecision == thresholdPolicyDecisionAllow {
 			successfulRuleCount++
+		} else if node.ruleDecision == thresholdPolicyDecisionUndetermined {
+			undeterminedRuleCount++
 		}
 	}
 
@@ -202,23 +218,10 @@ func (n *evaluationNode) calculateDecision() thresholdPolicyDecision {
 	}
 	if successfulRuleCount >= threshold {
 		n.ruleDecision = thresholdPolicyDecisionAllow
-	}
-	if n.isCommited() {
+	} else if n.commited && undeterminedRuleCount == 0 {
 		n.ruleDecision = thresholdPolicyDecisionDeny
 	}
 	return n.ruleDecision
-}
-
-// isCommited checks if the node or any of its ancestors are commited.
-// In single goroutine mode, we only need to check the commited field.
-// In multi goroutine mode, we need to track referrers listed before committed.
-func (n *evaluationNode) isCommited() bool {
-	for node := n; node != nil; node = node.subjectNode {
-		if node.commited {
-			return true
-		}
-	}
-	return false
 }
 
 // refreshAncestorsDecision refreshes the decision for all ancestors.
