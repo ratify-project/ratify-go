@@ -133,8 +133,7 @@ type evaluationNode struct {
 	childNodes map[int][]*evaluationNode
 
 	// commited indicates whether more child (virtual) nodes will be added to
-	// this node. If set to true, the node is finalized and no more child
-	// nodes will be added to it.
+	// this node. If set to true, no more child nodes will be added to it.
 	commited bool
 }
 
