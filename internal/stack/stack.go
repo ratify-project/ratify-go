@@ -15,22 +15,34 @@ limitations under the License.
 
 package stack
 
-// Stack is a generic stack implementation.
-type Stack[T any] []T
+import "sync"
+
+// Stack is a concurrent-safe generic stack implementation.
+type Stack[T any] struct {
+	items []T
+	mu    sync.RWMutex
+}
 
 // Push pushes keys to the stack.
 func (s *Stack[T]) Push(keys ...T) {
-	*s = append(*s, keys...)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = append(s.items, keys...)
 }
 
-// Pop pops keys from the stack.
+// Pop pops a key from the stack.
 func (s *Stack[T]) Pop() T {
-	t := (*s)[len(*s)-1]
-	*s = (*s)[:len(*s)-1]
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	t := s.items[len(s.items)-1]
+	s.items = s.items[:len(s.items)-1]
 	return t
 }
 
-// IsEmpty checks if the stack is empty.
+// Len returns the number of elements in the stack.
 func (s *Stack[T]) Len() int {
-	return len(*s)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.items)
 }
