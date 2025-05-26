@@ -21,9 +21,8 @@ import (
 	"fmt"
 
 	"github.com/notaryproject/ratify-go/internal/stack"
+	"github.com/notaryproject/ratify-go/internal/worker"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/ratify-project/ratify-go/internal/stack"
-	"github.com/ratify-project/ratify-go/internal/worker"
 	"oras.land/oras-go/v2/registry"
 )
 
