@@ -29,7 +29,4 @@ type Group interface {
 	// Wait blocks until all tasks in the group are completed,
 	// or until an error occurs.
 	Wait() error
-
-	// Cancel cancels all tasks in the group.
-	Cancel() error
 }
