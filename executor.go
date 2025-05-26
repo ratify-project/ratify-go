@@ -22,6 +22,7 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/ratify-project/ratify-go/internal/stack"
+	"github.com/ratify-project/ratify-go/internal/worker"
 	"oras.land/oras-go/v2/registry"
 )
 
@@ -69,6 +70,8 @@ type Executor struct {
 	// not set, the validation result will be returned without evaluation.
 	// Optional.
 	PolicyEnforcer PolicyEnforcer
+
+	workerpool worker.Pool
 }
 
 // NewExecutor creates a new executor with the given verifiers, store, and
