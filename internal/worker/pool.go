@@ -17,100 +17,32 @@ package worker
 
 import (
 	"context"
-	"sync"
-
-	"github.com/notaryproject/ratify-go/internal/stack"
 )
 
 type token struct{}
 
 type pool struct {
-	tasks stack.Stack[func() error]
-
-	// synchronization
-	hasTask   chan token
-	semaphore chan token
-	wg        sync.WaitGroup
-
-	// error handling
-	cancel  context.CancelCauseFunc
-	errOnce sync.Once
-	err     error
+	group *group
 }
 
 // NewPool creates a new worker pool.
 func NewPool(ctx context.Context, size int) (*pool, context.Context) {
-	ctxWithCancel, cancel := context.WithCancelCause(ctx)
+	group, ctxWithCancel := newGroup(ctx, make(chan token, size))
 	p := &pool{
-		cancel:    cancel,
-		hasTask:   make(chan token, 1),
-		semaphore: make(chan token, size),
+		group: group,
 	}
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				close(p.semaphore)
-				return
-			case <-p.hasTask:
-				select {
-				case <-ctx.Done():
-					close(p.semaphore)
-					return
-				case p.semaphore <- token{}:
-					task := p.tasks.Pop()
-					p.wg.Add(1)
-					go func() {
-						defer func() {
-							p.wg.Done()
-							<-p.semaphore
-						}()
-
-						if task != nil {
-							if err := task(); err != nil {
-								p.errOnce.Do(func() {
-									p.err = err
-									// Cancel the context with the error
-									p.cancel(err)
-								})
-							}
-						}
-					}()
-					if p.tasks.Len() > 0 {
-						// Notify that there is another task available
-						select {
-						case p.hasTask <- token{}:
-						default:
-						}
-					}
-				}
-			}
-		}
-	}()
 
 	return p, ctxWithCancel
 }
 
 func (p *pool) Submit(task func() error) error {
-	p.tasks.Push(task)
-	// notify that there is a new task available
-	select {
-	case p.hasTask <- token{}:
-	default:
-	}
-	return nil
+	return p.group.Submit(task)
 }
 
 func (p *pool) Wait() error {
-	for {
-		p.wg.Wait()
-		if p.err != nil {
-			return p.err
-		}
-		if p.tasks.Len() == 0 {
-			break
-		}
-	}
-	return nil
+	return p.group.Wait()
+}
+
+func (p *pool) NewGroup(ctx context.Context) (Group, context.Context) {
+	return newGroup(ctx, p.group.semaphore)
 }

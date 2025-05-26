@@ -166,7 +166,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	// referrer artifacts.
 	var newTasks stack.Stack[*executorTask]
 	var artifactReports []*ValidationReport
-	workerGroup := e.workerpool.NewGroup()
+	workerGroup, ctx := e.workerpool.NewGroup(ctx)
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
 			workerGroup.Submit(func() error {
@@ -241,7 +241,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 	var mu sync.Mutex
 	var verifierReports []*VerificationResult
 
-	workerGroup := e.workerpool.NewGroup()
+	workerGroup, ctx := e.workerpool.NewGroup(ctx)
 	for _, verifier := range e.Verifiers {
 		if !verifier.Verifiable(artifact) {
 			continue

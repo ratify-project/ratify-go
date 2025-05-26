@@ -15,11 +15,13 @@ limitations under the License.
 
 package worker
 
+import "context"
+
 type Pool interface {
 	Group
 
 	// NewGroup creates a new Group for managing a set of tasks.
-	NewGroup() Group
+	NewGroup(ctx context.Context) (Group, context.Context)
 }
 
 type Group interface {
