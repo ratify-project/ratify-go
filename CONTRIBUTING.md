@@ -10,8 +10,8 @@ This project has adopted the [CNCF Code of Conduct](https://github.com/cncf/foun
 ## Getting Started
 There are several ways to contribute to this project. Here are a few ideas to get you started:
 - If you would like to ask a question or open an issue or feature request:
-    - Review existing [issues](https://github.com/ratify-project/ratify-go/issues) and [pull requests (PRs)](https://github.com/ratify-project/ratify-go/pulls) to see if your question has already been answered.
-    - If not, open a new issue or feature request by following the [guide](https://github.com/ratify-project/ratify-go/issues/new).
+    - Review existing [issues](https://github.com/notaryproject/ratify-go/issues) and [pull requests (PRs)](https://github.com/notaryproject/ratify-go/pulls) to see if your question has already been answered.
+    - If not, open a new issue or feature request by following the [guide](https://github.com/notaryproject/ratify-go/issues/new).
 
 - If you would like to fix an issue or implement a feature:
     - Review existing issues and provide feedback or ask for clarification. You may also be able to reach out to maintainers through the Slack channel.

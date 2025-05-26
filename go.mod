@@ -1,4 +1,4 @@
-module github.com/ratify-project/ratify-go
+module github.com/notaryproject/ratify-go
 
 go 1.23.0
 

@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ratify-project/ratify-go/internal/set"
+	"github.com/notaryproject/ratify-go/internal/set"
 )
 
 const allRule = 0 // All nested rules must succeed for this rule to be allowed.
