@@ -265,7 +265,10 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			case PrunedStateSubjectPruned:
 				// Skip remaining verifiers and return `errSubjectPruned` to
 				// notify `ListReferrers`stop processing.
-				verifierReports, _ := workerGroup.Wait()
+				verifierReports, err := workerGroup.Wait()
+				if err != nil {
+					return nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
+				}
 				return verifierReports, errSubjectPruned
 			default:
 				// do nothing if it's not pruned.
