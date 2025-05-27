@@ -17,7 +17,7 @@ package worker
 
 import "context"
 
-type Group interface {
+type Pool interface {
 	// Submit submits a task to the group.
 	Submit(task func() error) error
 
@@ -25,6 +25,6 @@ type Group interface {
 	// or until an error occurs.
 	Wait() error
 
-	// NewGroup creates a new Group for managing a set of tasks.
-	NewGroup(ctx context.Context) (Group, context.Context)
+	// SubPool creates a new Group for managing a set of tasks.
+	SubPool(ctx context.Context) (Pool, context.Context)
 }

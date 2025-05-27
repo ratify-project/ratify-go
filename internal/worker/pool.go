@@ -124,6 +124,6 @@ func (g *group) Wait() error {
 	return nil
 }
 
-func (g *group) NewGroup(ctx context.Context) (Group, context.Context) {
+func (g *group) SubPool(ctx context.Context) (Pool, context.Context) {
 	return newGroup(ctx, g.semaphore)
 }
