@@ -66,8 +66,8 @@ func newGroup(ctx context.Context, semaphore chan token) (*group, context.Contex
 				case <-ctx.Done():
 					return
 				case g.semaphore <- token{}:
-					task := g.tasks.Pop()
 					g.wg.Add(1)
+					task := g.tasks.Pop()
 					go func() {
 						defer func() {
 							g.wg.Done()

@@ -157,6 +157,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	if err := e.rootWorkerGroup.Wait(); err != nil {
 		return nil, nil, err
 	}
+	e.workerPool.Stop()
 
 	return rootTask.subjectReport.ArtifactReports, evaluator, nil
 }
