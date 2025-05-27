@@ -18,21 +18,23 @@ package worker
 import "context"
 
 type Pool interface {
+	// NewGroup creates a new worker pool group that shares the same
+	// goroutines as the original pool.
+	//
+	// The new group will have its own task queue and error will
+	// only cancel the new group and it's sub-pools.
+	//
+	// The hierarchy of group are built through the ctx passed to
+	// Group.
+	NewGroup(ctx context.Context) (Group, context.Context)
+}
+
+type Group interface {
 	// Submit submits a task to the pool. It will be scheduled for execution
 	// when a worker is available.
 	Submit(task func() error) error
 
-	// Wait blocks until all tasks in the pool are completed,
+	// Wait blocks until all tasks in the group are completed,
 	// or until an error occurs.
 	Wait() error
-
-	// SharedPool creates a new pool that shares the same
-	// goroutines as the original pool.
-	//
-	// The new pool will have its own task queue and error will
-	// only cancel the new pool and it's sub-pools.
-	//
-	// The hierarchy of pools are built through the ctx passed to
-	// SharedPool.
-	SharedPool(ctx context.Context) (Pool, context.Context)
 }

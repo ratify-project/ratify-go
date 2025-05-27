@@ -72,12 +72,13 @@ type Executor struct {
 	// Optional.
 	PolicyEnforcer PolicyEnforcer
 
-	rootWorkerGroup worker.Pool
+	workerPool      worker.Pool
+	rootWorkerGroup worker.Group
 }
 
 // NewExecutor creates a new executor with the given verifiers, store, and
 // policy enforcer.
-func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer) (*Executor, error) {
+func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer, workerPool worker.Pool) (*Executor, error) {
 	if err := validateExecutorSetup(store, verifiers); err != nil {
 		return nil, err
 	}
@@ -86,6 +87,7 @@ func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforce
 		Store:          store,
 		Verifiers:      verifiers,
 		PolicyEnforcer: policyEnforcer,
+		workerPool:     workerPool,
 	}, nil
 }
 
@@ -120,6 +122,7 @@ func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOp
 
 // aggregateVerifierReports generates and aggregates all verifier reports.
 func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateArtifactOptions) ([]*ValidationReport, Evaluator, error) {
+
 	// Only resolve the root subject reference.
 	ref, desc, err := e.resolveSubject(ctx, opts.Subject)
 	if err != nil {
@@ -145,6 +148,8 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 			Artifact: desc,
 		},
 	}
+	// Submit the root task to the worker pool to start processing.
+	e.rootWorkerGroup, ctx = e.workerPool.NewGroup(ctx)
 	e.rootWorkerGroup.Submit(func() error {
 		return e.verifySubjectAgainstReferrers(ctx, rootTask, repo, opts.ReferenceTypes, evaluator)
 	})
@@ -166,7 +171,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	// referrer artifacts.
 	var newTasks stack.Stack[*executorTask]
 	var artifactReports []*ValidationReport
-	workerGroup, ctx := e.rootWorkerGroup.SharedPool(ctx)
+	workerGroup, ctx := e.workerPool.NewGroup(ctx)
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
 			workerGroup.Submit(func() error {
@@ -241,7 +246,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 	var mu sync.Mutex
 	var verifierReports []*VerificationResult
 
-	workerGroup, ctx := e.rootWorkerGroup.SharedPool(ctx)
+	workerGroup, ctx := e.workerPool.NewGroup(ctx)
 	for _, verifier := range e.Verifiers {
 		if !verifier.Verifiable(artifact) {
 			continue
