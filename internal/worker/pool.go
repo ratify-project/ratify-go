@@ -24,7 +24,7 @@ import (
 
 type token struct{}
 
-type group struct {
+type pool struct {
 	// tasks is a stack of tasks to be executed
 	tasks stack.Stack[func() error]
 
@@ -44,13 +44,13 @@ type group struct {
 	err     error
 }
 
-func NewGroup(ctx context.Context, size int) (*group, context.Context) {
-	return newGroup(ctx, make(chan token, size))
+func NewPool(ctx context.Context, size int) (*pool, context.Context) {
+	return newPool(ctx, make(chan token, size))
 }
 
-func newGroup(ctx context.Context, semaphore chan token) (*group, context.Context) {
+func newPool(ctx context.Context, semaphore chan token) (*pool, context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
-	g := &group{
+	g := &pool{
 		cancel:    cancel,
 		notifier:  make(chan token, 1),
 		semaphore: semaphore,
@@ -101,7 +101,7 @@ func newGroup(ctx context.Context, semaphore chan token) (*group, context.Contex
 	return g, ctxWithCancel
 }
 
-func (g *group) Submit(task func() error) error {
+func (g *pool) Submit(task func() error) error {
 	g.tasks.Push(task)
 	// notify that there is a new task available
 	select {
@@ -111,7 +111,7 @@ func (g *group) Submit(task func() error) error {
 	return nil
 }
 
-func (g *group) Wait() error {
+func (g *pool) Wait() error {
 	for {
 		g.wg.Wait()
 		if g.err != nil {
@@ -124,6 +124,6 @@ func (g *group) Wait() error {
 	return nil
 }
 
-func (g *group) SubPool(ctx context.Context) (Pool, context.Context) {
-	return newGroup(ctx, g.semaphore)
+func (g *pool) SharedPool(ctx context.Context) (Pool, context.Context) {
+	return newPool(ctx, g.semaphore)
 }
