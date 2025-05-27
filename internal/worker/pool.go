@@ -15,12 +15,19 @@ limitations under the License.
 
 package worker
 
+import (
+	"fmt"
+)
+
 type token struct{}
 
 // Pool is a channel-based semaphore that limits the
 // number of concurrent tasks.
 type Pool chan token
 
-func NewPool(size int) Pool {
-	return make(chan token, size)
+func NewPool(size int) (Pool, error) {
+	if size <= 0 {
+		return nil, fmt.Errorf("invalid pool size: %d", size)
+	}
+	return make(chan token, size), nil
 }

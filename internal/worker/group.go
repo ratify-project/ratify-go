@@ -43,11 +43,11 @@ type group[T any] struct {
 }
 
 // NewGroup creates a new group with a given size.
-func NewGroup[T any](ctx context.Context, pool chan token) (*group[T], context.Context) {
+func NewGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context) {
 	return newGroup[T](ctx, pool)
 }
 
-func newGroup[T any](ctx context.Context, pool chan token) (*group[T], context.Context) {
+func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
 	g := &group[T]{
 		ctx:      ctxWithCancel,

@@ -76,16 +76,21 @@ type Executor struct {
 
 // NewExecutor creates a new executor with the given verifiers, store, and
 // policy enforcer.
-func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer, workerPool worker.Pool) (*Executor, error) {
+func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer, workerCount int) (*Executor, error) {
 	if err := validateExecutorSetup(store, verifiers); err != nil {
 		return nil, err
+	}
+
+	pool, err := worker.NewPool(workerCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create executor: %w", err)
 	}
 
 	return &Executor{
 		Store:          store,
 		Verifiers:      verifiers,
 		PolicyEnforcer: policyEnforcer,
-		workerPool:     workerPool,
+		workerPool:     pool,
 	}, nil
 }
 
