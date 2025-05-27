@@ -27,6 +27,9 @@ type Pool interface {
 	// The hierarchy of group are built through the ctx passed to
 	// Group.
 	NewGroup(ctx context.Context) (Group, context.Context)
+
+	// Stop stops the worker pool and all its groups.
+	Stop()
 }
 
 type Group interface {

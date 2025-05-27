@@ -32,3 +32,8 @@ func NewPool(size int) Pool {
 func (p *pool) NewGroup(ctx context.Context) (Group, context.Context) {
 	return newGroup(ctx, p.semaphore)
 }
+
+func (p *pool) Stop() {
+	// Closing the semaphore channel will stop all groups from accepting new tasks.
+	close(p.semaphore)
+}

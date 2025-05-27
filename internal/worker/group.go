@@ -37,6 +37,7 @@ type group struct {
 	wg sync.WaitGroup
 
 	// error handling
+	ctx     context.Context
 	cancel  context.CancelCauseFunc
 	errOnce sync.Once
 	err     error
@@ -49,6 +50,7 @@ func NewGroup(ctx context.Context, size int) (*group, context.Context) {
 func newGroup(ctx context.Context, semaphore chan token) (*group, context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
 	g := &group{
+		ctx:       ctxWithCancel,
 		cancel:    cancel,
 		notifier:  make(chan token, 1),
 		semaphore: semaphore,
@@ -58,12 +60,10 @@ func newGroup(ctx context.Context, semaphore chan token) (*group, context.Contex
 		for {
 			select {
 			case <-ctx.Done():
-				close(g.semaphore)
 				return
 			case <-g.notifier:
 				select {
 				case <-ctx.Done():
-					close(g.semaphore)
 					return
 				case g.semaphore <- token{}:
 					task := g.tasks.Pop()
@@ -100,7 +100,13 @@ func newGroup(ctx context.Context, semaphore chan token) (*group, context.Contex
 }
 
 func (g *group) Submit(task func() error) error {
-	g.tasks.Push(task)
+	select {
+	case <-g.ctx.Done():
+		return g.ctx.Err()
+	default:
+		g.tasks.Push(task)
+	}
+
 	// notify that there is a new task available
 	select {
 	case g.notifier <- token{}:
