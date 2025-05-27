@@ -22,38 +22,38 @@ import (
 	"github.com/notaryproject/ratify-go/internal/stack"
 )
 
-type group struct {
+type group[T any] struct {
 	// tasks is a stack of tasks to be executed
-	tasks stack.Stack[func() error]
+	tasks stack.Stack[func() (T, error)]
 
 	// synchronization
-	//
-	// notifier has a single token to indicate that there is a
-	// task available
 	notifier chan token
-	// semaphore is used to limit the number of concurrent tasks
-	semaphore chan token
-	// wg is used to wait for all tasks to complete
-	wg sync.WaitGroup
+	pool     chan token
+	wg       sync.WaitGroup
 
 	// error handling
 	ctx     context.Context
 	cancel  context.CancelCauseFunc
 	errOnce sync.Once
 	err     error
+
+	// results
+	resultsMu sync.Mutex
+	results   []T
 }
 
-func NewGroup(ctx context.Context, size int) (*group, context.Context) {
-	return newGroup(ctx, make(chan token, size))
+// NewGroup creates a new group with a given size.
+func NewGroup[T any](ctx context.Context, pool chan token) (*group[T], context.Context) {
+	return newGroup[T](ctx, pool)
 }
 
-func newGroup(ctx context.Context, semaphore chan token) (*group, context.Context) {
+func newGroup[T any](ctx context.Context, pool chan token) (*group[T], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
-	g := &group{
-		ctx:       ctxWithCancel,
-		cancel:    cancel,
-		notifier:  make(chan token, 1),
-		semaphore: semaphore,
+	g := &group[T]{
+		ctx:      ctxWithCancel,
+		cancel:   cancel,
+		notifier: make(chan token, 1),
+		pool:     pool,
 	}
 
 	go func() {
@@ -65,27 +65,30 @@ func newGroup(ctx context.Context, semaphore chan token) (*group, context.Contex
 				select {
 				case <-ctx.Done():
 					return
-				case g.semaphore <- token{}:
+				case g.pool <- token{}:
 					g.wg.Add(1)
 					task := g.tasks.Pop()
 					go func() {
 						defer func() {
 							g.wg.Done()
-							<-g.semaphore
+							<-g.pool
 						}()
 
 						if task != nil {
-							if err := task(); err != nil {
+							result, err := task()
+							if err != nil {
 								g.errOnce.Do(func() {
 									g.err = err
-									// Cancel the context with the error
 									g.cancel(err)
 								})
+							} else {
+								g.resultsMu.Lock()
+								g.results = append(g.results, result)
+								g.resultsMu.Unlock()
 							}
 						}
 					}()
 					if g.tasks.Len() > 0 {
-						// Notify that there is another task available
 						select {
 						case g.notifier <- token{}:
 						default:
@@ -99,7 +102,7 @@ func newGroup(ctx context.Context, semaphore chan token) (*group, context.Contex
 	return g, ctxWithCancel
 }
 
-func (g *group) Submit(task func() error) error {
+func (g *group[T]) Submit(task func() (T, error)) error {
 	select {
 	case <-g.ctx.Done():
 		return g.ctx.Err()
@@ -107,7 +110,6 @@ func (g *group) Submit(task func() error) error {
 		g.tasks.Push(task)
 	}
 
-	// notify that there is a new task available
 	select {
 	case g.notifier <- token{}:
 	default:
@@ -115,15 +117,20 @@ func (g *group) Submit(task func() error) error {
 	return nil
 }
 
-func (g *group) Wait() error {
+func (g *group[T]) Wait() ([]T, error) {
 	for {
 		g.wg.Wait()
 		if g.err != nil {
-			return g.err
+			return nil, g.err
 		}
 		if g.tasks.Len() == 0 {
 			break
 		}
 	}
-	return nil
+	g.resultsMu.Lock()
+	defer g.resultsMu.Unlock()
+	// Return a copy to avoid race conditions
+	resultsCopy := make([]T, len(g.results))
+	copy(resultsCopy, g.results)
+	return resultsCopy, nil
 }

@@ -15,25 +15,12 @@ limitations under the License.
 
 package worker
 
-import "context"
-
 type token struct{}
 
-type pool struct {
-	semaphore chan token
-}
+// Pool is a channel-based semaphore that limits the
+// number of concurrent tasks.
+type Pool chan token
 
 func NewPool(size int) Pool {
-	return &pool{
-		semaphore: make(chan token, size),
-	}
-}
-
-func (p *pool) NewGroup(ctx context.Context) (Group, context.Context) {
-	return newGroup(ctx, p.semaphore)
-}
-
-func (p *pool) Stop() {
-	// Closing the semaphore channel will stop all groups from accepting new tasks.
-	close(p.semaphore)
+	return make(chan token, size)
 }

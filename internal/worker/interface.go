@@ -15,29 +15,12 @@ limitations under the License.
 
 package worker
 
-import "context"
-
-type Pool interface {
-	// NewGroup creates a new worker pool group that shares the same
-	// goroutines as the original pool.
-	//
-	// The new group will have its own task queue and error will
-	// only cancel the new group and it's sub-pools.
-	//
-	// The hierarchy of group are built through the ctx passed to
-	// Group.
-	NewGroup(ctx context.Context) (Group, context.Context)
-
-	// Stop stops the worker pool and all its groups.
-	Stop()
-}
-
-type Group interface {
+type Group[T any] interface {
 	// Submit submits a task to the pool. It will be scheduled for execution
-	// when a worker is available.
-	Submit(task func() error) error
+	// when a worker is available. The task returns a value of type T and an error.
+	Submit(task func() (T, error)) error
 
 	// Wait blocks until all tasks in the group are completed,
-	// or until an error occurs.
-	Wait() error
+	// or until an error occurs. Returns all results in a slice.
+	Wait() ([]T, error)
 }
