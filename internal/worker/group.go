@@ -22,6 +22,8 @@ import (
 	"github.com/notaryproject/ratify-go/internal/stack"
 )
 
+type token struct{}
+
 type group struct {
 	// tasks is a stack of tasks to be executed
 	tasks stack.Stack[func() error]
@@ -40,6 +42,10 @@ type group struct {
 	cancel  context.CancelCauseFunc
 	errOnce sync.Once
 	err     error
+}
+
+func NewGroup(ctx context.Context, size int) (*group, context.Context) {
+	return newGroup(ctx, make(chan token, size))
 }
 
 func newGroup(ctx context.Context, semaphore chan token) (*group, context.Context) {
@@ -116,5 +122,8 @@ func (g *group) Wait() error {
 		}
 	}
 	return nil
+}
 
+func (g *group) NewGroup(ctx context.Context) (Group, context.Context) {
+	return newGroup(ctx, g.semaphore)
 }
