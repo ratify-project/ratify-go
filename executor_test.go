@@ -659,7 +659,7 @@ func TestValidateArtifact(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Artifact pruned for artifact with digest: testDigest2",
+			name: "Verifier pruned for artifact with digest: testDigest2",
 			opts: ValidateArtifactOptions{
 				Subject: testImage,
 			},
@@ -710,7 +710,7 @@ func TestValidateArtifact(t *testing.T) {
 			},
 			policyEnforcer: &mockPolicyEnforcer{
 				evaluator: &mockEvaluator{
-					artifactPrunedDigest: testDigest2,
+					verifierPrunedDigest: testDigest2,
 				},
 			},
 			want: &ValidationResult{
