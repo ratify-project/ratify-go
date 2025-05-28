@@ -30,8 +30,10 @@ type group[T any] struct {
 	// synchronization
 	notifier    chan token
 	pool        chan token
-	activeTasks int32         // atomic counter for active tasks
-	finished    chan struct{} // signals when all work is complete
+	activeTasks int32      // atomic counter for active tasks
+	mu          sync.Mutex // protects completion state
+	completed   bool       // indicates all work is complete
+	cond        *sync.Cond // condition variable for completion signaling
 
 	// error handling
 	ctx     context.Context
@@ -56,11 +58,11 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 		cancel:   cancel,
 		notifier: make(chan token, 1),
 		pool:     pool,
-		finished: make(chan struct{}),
 	}
+	g.cond = sync.NewCond(&g.mu)
 
 	go func() {
-		defer close(g.finished) // Ensure finished channel is closed when goroutine exits
+		// Main worker goroutine
 
 		for {
 			select {
@@ -92,10 +94,7 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 							// Atomically decrement and check for completion
 							remaining := atomic.AddInt32(&g.activeTasks, -1)
 							if remaining == 0 && g.tasks.IsEmpty() {
-								select {
-								case g.finished <- struct{}{}:
-								default:
-								}
+								g.signalCompletion()
 							}
 						}()
 
@@ -157,32 +156,49 @@ func (g *group[T]) Wait() ([]T, error) {
 		return nil, g.err
 	}
 
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	// Wait for all work to be completed
-	for {
+	for !g.completed {
 		activeTasks := atomic.LoadInt32(&g.activeTasks)
-		pendingTasks := g.tasks.IsEmpty()
+		pendingTasks := !g.tasks.IsEmpty()
 
 		// If no active tasks and no pending tasks, we're done
-		if activeTasks == 0 && pendingTasks {
+		if activeTasks == 0 && !pendingTasks {
+			g.completed = true
 			break
 		}
 
 		// If there are pending tasks but no active tasks, trigger processing
-		if activeTasks == 0 && !pendingTasks {
+		if activeTasks == 0 && pendingTasks {
+			g.mu.Unlock()
 			select {
 			case g.notifier <- token{}:
 			default:
 			}
+			g.mu.Lock()
 		}
 
 		// Wait for completion signal or context cancellation
-		select {
-		case <-g.finished:
-			// Check the condition again to avoid race conditions
-			if atomic.LoadInt32(&g.activeTasks) == 0 && g.tasks.IsEmpty() {
-				goto done
+		// Create a goroutine to handle context cancellation
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-g.ctx.Done():
+				g.mu.Lock()
+				g.completed = true
+				g.cond.Signal()
+				g.mu.Unlock()
+			case <-done:
 			}
-			// Continue the loop if condition not met
+		}()
+
+		g.cond.Wait()
+		close(done)
+
+		// Check for context cancellation
+		select {
 		case <-g.ctx.Done():
 			// Check if it was our internal cancellation due to error
 			if g.err != nil {
@@ -194,10 +210,9 @@ func (g *group[T]) Wait() ([]T, error) {
 			}
 			// Regular context cancellation
 			return nil, g.ctx.Err()
+		default:
 		}
 	}
-
-done:
 
 	// Double-check for errors after completion
 	if g.err != nil {
@@ -210,4 +225,12 @@ done:
 	resultsCopy := make([]T, len(g.results))
 	copy(resultsCopy, g.results)
 	return resultsCopy, nil
+}
+
+// signalCompletion safely signals that all work is complete
+func (g *group[T]) signalCompletion() {
+	g.mu.Lock()
+	g.completed = true
+	g.cond.Signal()
+	g.mu.Unlock()
 }
