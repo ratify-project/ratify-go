@@ -70,27 +70,30 @@ type Executor struct {
 	// Optional.
 	PolicyEnforcer PolicyEnforcer
 
-	workerPool      worker.Pool
-	rootWorkerGroup worker.Group[any]
+	// ConcurrencyLimit is the maximum number of concurrent tasks that can be
+	// executed.
+	//
+	// note: each call to ValidateArtifact will create new worker pools based on this
+	// limit.
+	ConcurrencyLimit int
 }
 
 // NewExecutor creates a new executor with the given verifiers, store, and
 // policy enforcer.
-func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer, workerCount int) (*Executor, error) {
+func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer, concurrencyLimit int) (*Executor, error) {
 	if err := validateExecutorSetup(store, verifiers); err != nil {
 		return nil, err
 	}
 
-	pool, err := worker.NewPool(workerCount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create executor: %w", err)
+	if concurrencyLimit <= 0 {
+		return nil, fmt.Errorf("concurrency limit (%d) must be greater than 0", concurrencyLimit)
 	}
 
 	return &Executor{
-		Store:          store,
-		Verifiers:      verifiers,
-		PolicyEnforcer: policyEnforcer,
-		workerPool:     pool,
+		Store:            store,
+		Verifiers:        verifiers,
+		PolicyEnforcer:   policyEnforcer,
+		ConcurrencyLimit: concurrencyLimit,
 	}, nil
 }
 
@@ -125,6 +128,18 @@ func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOp
 
 // aggregateVerifierReports generates and aggregates all verifier reports.
 func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateArtifactOptions) ([]*ValidationReport, Evaluator, error) {
+	artifactTaskPool, err := worker.NewPool(e.ConcurrencyLimit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create a new worker pool: %w", err)
+	}
+	referrerTaskPool, err := worker.NewPool(e.ConcurrencyLimit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create a new referrer worker pool: %w", err)
+	}
+	verifierTaskPool, err := worker.NewPool(e.ConcurrencyLimit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create a new verifier worker pool: %w", err)
+	}
 
 	// Only resolve the root subject reference.
 	ref, desc, err := e.resolveSubject(ctx, opts.Subject)
@@ -152,12 +167,12 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 		},
 	}
 	// Submit the root task to the worker pool to start processing.
-	e.rootWorkerGroup, ctx = worker.NewGroup[any](ctx, e.workerPool)
-	e.rootWorkerGroup.Submit(func() (any, error) {
-		return nil, e.verifySubjectAgainstReferrers(ctx, rootTask, repo, opts.ReferenceTypes, evaluator)
+	artifactTaskGroup, ctx := worker.NewGroup[any](ctx, artifactTaskPool)
+	artifactTaskGroup.Submit(func() (any, error) {
+		return nil, e.verifySubjectAgainstReferrers(ctx, rootTask, repo, opts.ReferenceTypes, evaluator, artifactTaskGroup, referrerTaskPool, verifierTaskPool)
 	})
 
-	if _, err := e.rootWorkerGroup.Wait(); err != nil {
+	if _, err := artifactTaskGroup.Wait(); err != nil {
 		return nil, nil, err
 	}
 
@@ -166,17 +181,17 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
-func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator) error {
+func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskGroup worker.Group[any], referrerTaskPool, verifierTaskPool worker.Pool) error {
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.
 	// artifactReports is used to store the validation reports of those
 	// referrer artifacts.
-	workerGroup, ctx := worker.NewGroup[*ValidationReport](ctx, e.workerPool)
+	referrerTaskGroup, ctx := worker.NewGroup[*ValidationReport](ctx, referrerTaskPool)
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
-			workerGroup.Submit(func() (*ValidationReport, error) {
-				results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator)
+			referrerTaskGroup.Submit(func() (*ValidationReport, error) {
+				results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator, verifierTaskPool)
 				if err != nil {
 					if errors.Is(err, errSubjectPruned) && len(results) > 0 {
 						// it is possible that one or some verifiers' reports in the
@@ -207,7 +222,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	}
 
 	isSubjectPruned := false
-	artifactReports, err := workerGroup.Wait()
+	artifactReports, err := referrerTaskGroup.Wait()
 	if err != nil {
 		if err != errSubjectPruned {
 			return fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
@@ -235,8 +250,8 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 				artifactDesc:  artifactReport.Artifact,
 				subjectReport: artifactReport,
 			}
-			e.rootWorkerGroup.Submit(func() (any, error) {
-				return nil, e.verifySubjectAgainstReferrers(ctx, task, repo, referenceTypes, evaluator)
+			artifactTaskGroup.Submit(func() (any, error) {
+				return nil, e.verifySubjectAgainstReferrers(ctx, task, repo, referenceTypes, evaluator, artifactTaskGroup, referrerTaskPool, verifierTaskPool)
 			})
 		}
 	}
@@ -245,39 +260,32 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
-func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator) ([]*VerificationResult, error) {
-	workerGroup, ctx := worker.NewGroup[*VerificationResult](ctx, e.workerPool)
+func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator, verifierTaskPool worker.Pool) ([]*VerificationResult, error) {
+	verifierTaskGroup, ctx := worker.NewGroup[*VerificationResult](ctx, verifierTaskPool)
 	for _, verifier := range e.Verifiers {
 		if !verifier.Verifiable(artifact) {
 			continue
 		}
 
-		if evaluator != nil {
-			prunedState, err := evaluator.Pruned(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifier.Name())
-			if err != nil {
-				return nil, fmt.Errorf("failed to check if verifier: %s is required to verify subject: %s, against artifact: %s, err: %w", verifier.Name(), subjectDesc.Digest, artifact.Digest, err)
-			}
-			switch prunedState {
-			case PrunedStateVerifierPruned:
-				// Skip this verifier if it's not required.
-				continue
-			case PrunedStateArtifactPruned:
-				// Skip remaining verifiers if the artifact is not required.
-				return workerGroup.Wait()
-			case PrunedStateSubjectPruned:
-				// Skip remaining verifiers and return `errSubjectPruned` to
-				// notify `ListReferrers`stop processing.
-				verifierReports, err := workerGroup.Wait()
+		verifierTaskGroup.Submit(func() (*VerificationResult, error) {
+			if evaluator != nil {
+				prunedState, err := evaluator.Pruned(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifier.Name())
 				if err != nil {
-					return nil, fmt.Errorf("failed to verify artifact %s@%s with verifier %s: %w", repo, subjectDesc.Digest, verifier.Name(), err)
+					return nil, fmt.Errorf("failed to check if verifier: %s is required to verify subject: %s, against artifact: %s, err: %w", verifier.Name(), subjectDesc.Digest, artifact.Digest, err)
 				}
-				return verifierReports, errSubjectPruned
-			default:
-				// do nothing if it's not pruned.
+				switch prunedState {
+				case PrunedStateVerifierPruned:
+					// Skip this verifier if it's not required.
+					return nil, nil
+				case PrunedStateSubjectPruned:
+					// Skip remaining verifiers and return `errSubjectPruned` to
+					// notify `ListReferrers`stop processing.
+					return nil, errSubjectPruned
+				default:
+					// do nothing if it's not pruned.
+				}
 			}
-		}
 
-		workerGroup.Submit(func() (*VerificationResult, error) {
 			// Verify the subject artifact against the referrer artifact.
 			verifierReport, err := verifier.Verify(ctx, &VerifyOptions{
 				Store:              e.Store,
@@ -299,7 +307,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 		})
 	}
 
-	return workerGroup.Wait()
+	return verifierTaskGroup.Wait()
 }
 
 func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry.Reference, ocispec.Descriptor, error) {
