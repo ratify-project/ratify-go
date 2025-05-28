@@ -18,6 +18,7 @@ package worker
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/notaryproject/ratify-go/internal/stack"
 )
@@ -27,9 +28,10 @@ type group[T any] struct {
 	tasks stack.Stack[func() (T, error)]
 
 	// synchronization
-	notifier chan token
-	pool     chan token
-	wg       sync.WaitGroup
+	notifier    chan token
+	pool        chan token
+	activeTasks int32         // atomic counter for active tasks
+	finished    chan struct{} // signals when all work is complete
 
 	// error handling
 	ctx     context.Context
@@ -54,6 +56,7 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 		cancel:   cancel,
 		notifier: make(chan token, 1),
 		pool:     pool,
+		finished: make(chan struct{}),
 	}
 
 	go func() {
@@ -66,12 +69,20 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 				case <-ctx.Done():
 					return
 				case g.pool <- token{}:
-					g.wg.Add(1)
+					atomic.AddInt32(&g.activeTasks, 1)
 					task := g.tasks.Pop()
 					go func() {
 						defer func() {
-							g.wg.Done()
 							<-g.pool
+
+							// Atomically decrement and check for completion
+							remaining := atomic.AddInt32(&g.activeTasks, -1)
+							if remaining == 0 && g.tasks.Len() == 0 {
+								select {
+								case g.finished <- struct{}{}:
+								default:
+								}
+							}
 						}()
 
 						if task != nil {
@@ -118,15 +129,34 @@ func (g *group[T]) Submit(task func() (T, error)) error {
 }
 
 func (g *group[T]) Wait() ([]T, error) {
+	// Wait for all work to be completed
 	for {
-		g.wg.Wait()
-		if g.err != nil {
-			return nil, g.err
-		}
-		if g.tasks.Len() == 0 {
+		// Check if we have any active tasks or pending tasks
+		if atomic.LoadInt32(&g.activeTasks) == 0 && g.tasks.Len() == 0 {
 			break
 		}
+
+		// If there are pending tasks but no active tasks, trigger processing
+		if atomic.LoadInt32(&g.activeTasks) == 0 && g.tasks.Len() > 0 {
+			select {
+			case g.notifier <- token{}:
+			default:
+			}
+		}
+
+		// Wait for completion signal or context cancellation
+		select {
+		case <-g.finished:
+			// Continue the loop to double-check the condition
+		case <-g.ctx.Done():
+			return nil, g.ctx.Err()
+		}
 	}
+
+	if g.err != nil {
+		return nil, g.err
+	}
+
 	g.resultsMu.Lock()
 	defer g.resultsMu.Unlock()
 	// Return a copy to avoid race conditions

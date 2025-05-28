@@ -149,9 +149,6 @@ func (m *mockEvaluator) Pruned(ctx context.Context, subjectDigest, artifactDiges
 	if m.verifierPrunedDigest != "" && artifactDigest == m.verifierPrunedDigest {
 		return PrunedStateVerifierPruned, nil
 	}
-	if m.artifactPrunedDigest != "" && artifactDigest == m.artifactPrunedDigest {
-		return PrunedStateArtifactPruned, nil
-	}
 	if m.subjectPrunedDigest != "" && subjectDigest == m.subjectPrunedDigest {
 		return PrunedStateSubjectPruned, nil
 	}
