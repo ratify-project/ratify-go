@@ -60,24 +60,38 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 	}
 
 	go func() {
+		defer close(g.finished) // Ensure finished channel is closed when goroutine exits
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-g.notifier:
+				// Check if we need to process tasks
+				if g.tasks.IsEmpty() {
+					continue
+				}
+
 				select {
 				case <-ctx.Done():
 					return
 				case g.pool <- token{}:
 					atomic.AddInt32(&g.activeTasks, 1)
-					task := g.tasks.Pop()
-					go func() {
+					task, ok := g.tasks.TryPop()
+					if !ok {
+						// No task available, release the pool token
+						<-g.pool
+						atomic.AddInt32(&g.activeTasks, -1)
+						continue
+					}
+
+					go func(taskFunc func() (T, error)) {
 						defer func() {
 							<-g.pool
 
 							// Atomically decrement and check for completion
 							remaining := atomic.AddInt32(&g.activeTasks, -1)
-							if remaining == 0 && g.tasks.Len() == 0 {
+							if remaining == 0 && g.tasks.IsEmpty() {
 								select {
 								case g.finished <- struct{}{}:
 								default:
@@ -85,21 +99,21 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 							}
 						}()
 
-						if task != nil {
-							result, err := task()
-							if err != nil {
-								g.errOnce.Do(func() {
-									g.err = err
-									g.cancel(err)
-								})
-							} else {
-								g.resultsMu.Lock()
-								g.results = append(g.results, result)
-								g.resultsMu.Unlock()
-							}
+						result, err := taskFunc()
+						if err != nil {
+							g.errOnce.Do(func() {
+								g.err = err
+								g.cancel(err)
+							})
+						} else {
+							g.resultsMu.Lock()
+							g.results = append(g.results, result)
+							g.resultsMu.Unlock()
 						}
-					}()
-					if g.tasks.Len() > 0 {
+					}(task)
+
+					// Check if there are more tasks to process
+					if !g.tasks.IsEmpty() {
 						select {
 						case g.notifier <- token{}:
 						default:
@@ -116,6 +130,15 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 func (g *group[T]) Submit(task func() (T, error)) error {
 	select {
 	case <-g.ctx.Done():
+		// Check if it was our internal cancellation due to error
+		if g.err != nil {
+			return g.err
+		}
+		// Check if context was canceled with cause
+		if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
+			return cause
+		}
+		// Regular context cancellation
 		return g.ctx.Err()
 	default:
 		g.tasks.Push(task)
@@ -129,15 +152,23 @@ func (g *group[T]) Submit(task func() (T, error)) error {
 }
 
 func (g *group[T]) Wait() ([]T, error) {
+	// Check early exit conditions
+	if g.err != nil {
+		return nil, g.err
+	}
+
 	// Wait for all work to be completed
 	for {
-		// Check if we have any active tasks or pending tasks
-		if atomic.LoadInt32(&g.activeTasks) == 0 && g.tasks.Len() == 0 {
+		activeTasks := atomic.LoadInt32(&g.activeTasks)
+		pendingTasks := g.tasks.IsEmpty()
+
+		// If no active tasks and no pending tasks, we're done
+		if activeTasks == 0 && pendingTasks {
 			break
 		}
 
 		// If there are pending tasks but no active tasks, trigger processing
-		if atomic.LoadInt32(&g.activeTasks) == 0 && g.tasks.Len() > 0 {
+		if activeTasks == 0 && !pendingTasks {
 			select {
 			case g.notifier <- token{}:
 			default:
@@ -147,17 +178,28 @@ func (g *group[T]) Wait() ([]T, error) {
 		// Wait for completion signal or context cancellation
 		select {
 		case <-g.finished:
-			// Continue the loop to double-check the condition
-		case <-g.ctx.Done():
-			if err := g.ctx.Err(); err == context.Canceled {
-				// If the context was canceled, we should return an error
-				return nil, context.Cause(g.ctx)
-			} else {
-				return nil, err
+			// Check the condition again to avoid race conditions
+			if atomic.LoadInt32(&g.activeTasks) == 0 && g.tasks.IsEmpty() {
+				goto done
 			}
+			// Continue the loop if condition not met
+		case <-g.ctx.Done():
+			// Check if it was our internal cancellation due to error
+			if g.err != nil {
+				return nil, g.err
+			}
+			// Check if context was canceled with cause
+			if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
+				return nil, cause
+			}
+			// Regular context cancellation
+			return nil, g.ctx.Err()
 		}
 	}
 
+done:
+
+	// Double-check for errors after completion
 	if g.err != nil {
 		return nil, g.err
 	}
