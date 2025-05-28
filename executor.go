@@ -181,13 +181,13 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
-func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskGroup worker.Group[any], referrerTaskPool, verifierTaskPool worker.Pool) error {
+func (e *Executor) verifySubjectAgainstReferrers(parentCtx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskGroup worker.Group[any], referrerTaskPool, verifierTaskPool worker.Pool) error {
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.
 	// artifactReports is used to store the validation reports of those
 	// referrer artifacts.
-	referrerTaskGroup, ctx := worker.NewGroup[*ValidationReport](ctx, referrerTaskPool)
+	referrerTaskGroup, ctx := worker.NewGroup[*ValidationReport](parentCtx, referrerTaskPool)
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
 			referrerTaskGroup.Submit(func() (*ValidationReport, error) {
@@ -251,7 +251,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 				subjectReport: artifactReport,
 			}
 			artifactTaskGroup.Submit(func() (any, error) {
-				return nil, e.verifySubjectAgainstReferrers(ctx, task, repo, referenceTypes, evaluator, artifactTaskGroup, referrerTaskPool, verifierTaskPool)
+				return nil, e.verifySubjectAgainstReferrers(parentCtx, task, repo, referenceTypes, evaluator, artifactTaskGroup, referrerTaskPool, verifierTaskPool)
 			})
 		}
 	}
@@ -306,8 +306,18 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			return verifierReport, nil
 		})
 	}
-
-	return verifierTaskGroup.Wait()
+	verificationResults, err := verifierTaskGroup.Wait()
+	if err != nil {
+		return nil, err
+	}
+	// Filter out nil results and return the verification results.
+	var results []*VerificationResult
+	for _, result := range verificationResults {
+		if result != nil {
+			results = append(results, result)
+		}
+	}
+	return results, nil
 }
 
 func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry.Reference, ocispec.Descriptor, error) {

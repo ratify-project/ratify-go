@@ -664,6 +664,13 @@ func TestValidateArtifact(t *testing.T) {
 				Subject: testImage,
 			},
 			store: &mockStore{
+				// referrers structure:
+				// testImage
+				// └── testArtifact1
+				//     ├── testArtifact2
+				//     |   └── testArtifact4
+				//     |       └── testArtifact5
+				//     └── testArtifact3
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
