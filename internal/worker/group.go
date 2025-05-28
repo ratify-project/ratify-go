@@ -149,7 +149,12 @@ func (g *group[T]) Wait() ([]T, error) {
 		case <-g.finished:
 			// Continue the loop to double-check the condition
 		case <-g.ctx.Done():
-			return nil, g.ctx.Err()
+			if err := g.ctx.Err(); err == context.Canceled {
+				// If the context was canceled, we should return an error
+				return nil, context.Cause(g.ctx)
+			} else {
+				return nil, err
+			}
 		}
 	}
 
