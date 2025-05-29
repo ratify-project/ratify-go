@@ -149,8 +149,7 @@ func (g *Group[Result]) Submit(task func() (Result, error)) error {
 //
 // Note: user can continue to submit tasks after calling Wait.
 func (g *Group[Result]) Wait() ([]Result, error) {
-	notCalled := atomic.CompareAndSwapInt32(&g.waitCalled, 0, 1)
-	if !notCalled {
+	if !g.waitOnce() {
 		return nil, errors.New("Wait() can only be called once on Group")
 	}
 
@@ -226,4 +225,8 @@ func (g *Group[Result]) signalCompletion() {
 	g.completed = true
 	g.cond.Signal()
 	g.mu.Unlock()
+}
+
+func (g *Group[Result]) waitOnce() bool {
+	return atomic.CompareAndSwapInt32(&g.waitCalled, 0, 1)
 }
