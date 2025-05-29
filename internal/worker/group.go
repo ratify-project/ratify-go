@@ -43,8 +43,8 @@ type Group[Result any] struct {
 	cancel  context.CancelCauseFunc
 	errOnce sync.Once
 
-	// ensure Wait() is called only once
-	waitOnce sync.Once
+	// waitCalled is an atomic flag to ensure Wait() is called only once
+	waitCalled int32
 }
 
 // NewGroup creates a new group with a given size.
@@ -66,9 +66,9 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 				return
 			case <-g.taskNotifier:
 				// check if we need to process tasks
-				// if g.tasks.IsEmpty() {
-				// 	continue
-				// }
+				if g.tasks.IsEmpty() {
+					continue
+				}
 
 				select {
 				case <-ctx.Done():
@@ -149,89 +149,75 @@ func (g *Group[Result]) Submit(task func() (Result, error)) error {
 //
 // Note: user can continue to submit tasks after calling Wait.
 func (g *Group[Result]) Wait() ([]Result, error) {
-	var (
-		results []Result
-		err     error
-		called  bool
-	)
-
-	g.waitOnce.Do(func() {
-		called = true
-		// Check early exit conditions
-		if g.ctx.Err() != nil {
-			// If context is already done, return the error
-			if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
-				err = cause
-				return
-			}
-			err = g.ctx.Err()
-			return
-		}
-
-		g.mu.Lock()
-		defer g.mu.Unlock()
-
-		// Wait for all work to be completed
-		for !g.completed {
-			activeTasks := atomic.LoadInt32(&g.activeTasks)
-			pendingTasks := !g.tasks.IsEmpty()
-
-			// If no active tasks and no pending tasks, we're done
-			if activeTasks == 0 && !pendingTasks {
-				g.completed = true
-				break
-			}
-
-			// If there are pending tasks but no active tasks, trigger processing
-			if activeTasks == 0 && pendingTasks {
-				g.mu.Unlock()
-				select {
-				case g.taskNotifier <- token{}:
-				default:
-				}
-				g.mu.Lock()
-			}
-
-			// Wait for completion signal or context cancellation
-			// Create a goroutine to handle context cancellation
-			done := make(chan struct{})
-			go func() {
-				select {
-				case <-g.ctx.Done():
-					g.mu.Lock()
-					g.completed = true
-					g.cond.Signal()
-					g.mu.Unlock()
-				case <-done:
-				}
-			}()
-
-			g.cond.Wait()
-			close(done)
-
-			// Check for context cancellation
-			select {
-			case <-g.ctx.Done():
-				// Check if context was canceled with cause
-				if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
-					err = cause
-					return
-				}
-				// Regular context cancellation
-				err = g.ctx.Err()
-				return
-			default:
-			}
-		}
-
-		results = g.results.ToSlice()
-	})
-
-	if !called {
+	notCalled := atomic.CompareAndSwapInt32(&g.waitCalled, 0, 1)
+	if !notCalled {
 		return nil, errors.New("Wait() can only be called once on Group")
 	}
 
-	return results, err
+	// Check early exit conditions
+	if g.ctx.Err() != nil {
+		// If context is already done, return the error
+		if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
+			return nil, cause
+		}
+		return nil, g.ctx.Err()
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Wait for all work to be completed
+	for !g.completed {
+		activeTasks := atomic.LoadInt32(&g.activeTasks)
+		pendingTasks := !g.tasks.IsEmpty()
+
+		// If no active tasks and no pending tasks, we're done
+		if activeTasks == 0 && !pendingTasks {
+			g.completed = true
+			break
+		}
+
+		// If there are pending tasks but no active tasks, trigger processing
+		if activeTasks == 0 && pendingTasks {
+			g.mu.Unlock()
+			select {
+			case g.taskNotifier <- token{}:
+			default:
+			}
+			g.mu.Lock()
+		}
+
+		// Wait for completion signal or context cancellation
+		// Create a goroutine to handle context cancellation
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-g.ctx.Done():
+				g.mu.Lock()
+				g.completed = true
+				g.cond.Signal()
+				g.mu.Unlock()
+			case <-done:
+			}
+		}()
+
+		g.cond.Wait()
+		close(done)
+
+		// Check for context cancellation
+		select {
+		case <-g.ctx.Done():
+			// Check if context was canceled with cause
+			if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
+				return nil, cause
+			}
+			// Regular context cancellation
+			return nil, g.ctx.Err()
+		default:
+		}
+	}
+
+	return g.results.ToSlice(), nil
 }
 
 // signalCompletion safely signals that all work is complete
