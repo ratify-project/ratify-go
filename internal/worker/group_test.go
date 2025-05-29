@@ -306,3 +306,23 @@ func TestGroup_SubmitWithContextCause(t *testing.T) {
 		t.Fatalf("expected group context to be cancelled")
 	}
 }
+
+func TestGroup_NoTaskSubmissionBeforeWait(t *testing.T) {
+	pool, err := NewPool(2)
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+
+	ctx := context.Background()
+	group, _ := NewGroup[int](ctx, pool)
+
+	// Directly call Wait without submitting any tasks
+	results, err := group.Wait()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(results) != 0 {
+		t.Fatalf("expected empty results, got %v", results)
+	}
+}

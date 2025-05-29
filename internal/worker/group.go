@@ -26,6 +26,8 @@ import (
 type Group[Result any] struct {
 	// tasks is a stack of tasks to be executed
 	tasks stack.Stack[func() (Result, error)]
+	// results is a slice to store results of completed tasks
+	results stack.Stack[Result]
 
 	// synchronization
 	pool         chan token // shared pool for limiting concurrency
@@ -39,9 +41,6 @@ type Group[Result any] struct {
 	ctx     context.Context
 	cancel  context.CancelCauseFunc
 	errOnce sync.Once
-
-	// results is a slice to store results of completed tasks
-	results stack.Stack[Result]
 }
 
 // NewGroup creates a new group with a given size.

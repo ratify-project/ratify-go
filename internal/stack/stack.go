@@ -75,9 +75,13 @@ func (s *Stack[T]) IsEmpty() bool {
 	return len(s.items) == 0
 }
 
-// ToSlice returns a copy of the stack's items as a slice.
+// ToSlice returns a the stack's items as a slice.
+//
+// The returned slice is the raw slice of the stack's items.
+// Modifying the slice will modify the stack. Please take care
+// about race conditions when using the returned slice.
 func (s *Stack[T]) ToSlice() []T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return append([]T{}, s.items...)
+	return s.items[:]
 }
