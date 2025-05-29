@@ -31,12 +31,14 @@ type Group[Result any] struct {
 	results stack.Stack[Result]
 
 	// synchronization
-	pool         chan token // shared pool for limiting concurrency
-	activeTasks  int32      // atomic counter for active tasks
-	taskNotifier chan token // notify new tasks for processing
-	mu           sync.Mutex // protects completion state
-	completed    bool       // indicates all work is complete
-	cond         *sync.Cond // condition variable for completion signaling
+	pool          chan token // shared pool for limiting concurrency
+	activeTasks   int32      // atomic counter for active tasks
+	taskNotifier  chan token // notify new tasks for processing
+	mu            sync.Mutex // protects completion state
+	completed     bool       // indicates all work is complete
+	cond          *sync.Cond // condition variable for completion signaling
+	completedCh   chan token // channel to signal completion
+	schedulerDone chan token // channel to signal scheduler goroutine completion
 
 	// error handling
 	ctx     context.Context
@@ -51,26 +53,28 @@ type Group[Result any] struct {
 func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
 	g := &Group[Result]{
-		ctx:          ctxWithCancel,
-		cancel:       cancel,
-		taskNotifier: make(chan token, 1),
-		pool:         sharedPool,
+		ctx:           ctxWithCancel,
+		cancel:        cancel,
+		taskNotifier:  make(chan token, 1),
+		pool:          sharedPool,
+		completedCh:   make(chan token),
+		schedulerDone: make(chan token),
 	}
 	g.cond = sync.NewCond(&g.mu)
 
 	// main scheduler goroutine
 	go func() {
+		defer close(g.schedulerDone)
 		for {
 			select {
+			case <-g.completedCh:
+				return
 			case <-ctx.Done():
 				return
 			case <-g.taskNotifier:
-				// // check if we need to process tasks
-				// if g.tasks.IsEmpty() {
-				// 	continue
-				// }
-
 				select {
+				case <-g.completedCh:
+					return
 				case <-ctx.Done():
 					return
 				case g.pool <- token{}:
@@ -151,6 +155,11 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 	if !g.waitOnce() {
 		return nil, errors.New("Wait() can only be called once on Group")
 	}
+
+	defer func() {
+		close(g.completedCh)
+		<-g.schedulerDone // wait for scheduler goroutine to finish
+	}()
 
 	// check early exit conditions
 	if g.ctx.Err() != nil {
