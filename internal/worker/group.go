@@ -58,18 +58,17 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 	}
 	g.cond = sync.NewCond(&g.mu)
 
+	// main scheduler goroutine
 	go func() {
-		// Main worker goroutine
-
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-g.taskNotifier:
-				// Check if we need to process tasks
-				if g.tasks.IsEmpty() {
-					continue
-				}
+				// check if we need to process tasks
+				// if g.tasks.IsEmpty() {
+				// 	continue
+				// }
 
 				select {
 				case <-ctx.Done():
@@ -78,13 +77,14 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 					atomic.AddInt32(&g.activeTasks, 1)
 					task, ok := g.tasks.TryPop()
 					if !ok {
-						// No task available, release the pool token
+						// no task available, release the pool token
 						<-g.pool
 						atomic.AddInt32(&g.activeTasks, -1)
 						continue
 					}
 
-					go func(taskFunc func() (Result, error)) {
+					// start to process the task
+					go func(f func() (Result, error)) {
 						defer func() {
 							<-g.pool
 
@@ -95,7 +95,7 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 							}
 						}()
 
-						result, err := taskFunc()
+						result, err := f()
 						if err != nil {
 							g.errOnce.Do(func() {
 								g.cancel(err)
