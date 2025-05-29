@@ -132,14 +132,17 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create a new worker pool: %w", err)
 	}
+	defer close(artifactTaskPool)
 	referrerTaskPool, err := worker.NewPool(e.ConcurrencyLimit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create a new referrer worker pool: %w", err)
 	}
+	defer close(referrerTaskPool)
 	verifierTaskPool, err := worker.NewPool(e.ConcurrencyLimit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create a new verifier worker pool: %w", err)
 	}
+	defer close(verifierTaskPool)
 
 	// Only resolve the root subject reference.
 	ref, desc, err := e.resolveSubject(ctx, opts.Subject)
@@ -156,9 +159,6 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 		}
 	}
 
-	// TODO: Implement a worker pool to validate artifacts concurrently.
-	// TODO: Enforce check on the stack size.
-	// Enqueue the subject artifact as the first task.
 	rootTask := &executorTask{
 		artifact:     ref,
 		artifactDesc: desc,

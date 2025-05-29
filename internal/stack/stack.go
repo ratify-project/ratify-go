@@ -74,3 +74,10 @@ func (s *Stack[T]) IsEmpty() bool {
 	defer s.mu.RUnlock()
 	return len(s.items) == 0
 }
+
+// ToSlice returns a copy of the stack's items as a slice.
+func (s *Stack[T]) ToSlice() []T {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]T{}, s.items...)
+}

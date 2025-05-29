@@ -28,32 +28,30 @@ type Group[Result any] struct {
 	tasks stack.Stack[func() (Result, error)]
 
 	// synchronization
-	notifier    chan token
-	pool        chan token
-	activeTasks int32      // atomic counter for active tasks
-	mu          sync.Mutex // protects completion state
-	completed   bool       // indicates all work is complete
-	cond        *sync.Cond // condition variable for completion signaling
+	pool         chan token // shared pool for limiting concurrency
+	activeTasks  int32      // atomic counter for active tasks
+	taskNotifier chan token // notify new tasks for processing
+	mu           sync.Mutex // protects completion state
+	completed    bool       // indicates all work is complete
+	cond         *sync.Cond // condition variable for completion signaling
 
 	// error handling
 	ctx     context.Context
 	cancel  context.CancelCauseFunc
 	errOnce sync.Once
-	err     error
 
-	// results
-	resultsMu sync.Mutex
-	results   []Result
+	// results is a slice to store results of completed tasks
+	results stack.Stack[Result]
 }
 
 // NewGroup creates a new group with a given size.
 func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
 	g := &Group[Result]{
-		ctx:      ctxWithCancel,
-		cancel:   cancel,
-		notifier: make(chan token, 1),
-		pool:     sharedPool,
+		ctx:          ctxWithCancel,
+		cancel:       cancel,
+		taskNotifier: make(chan token, 1),
+		pool:         sharedPool,
 	}
 	g.cond = sync.NewCond(&g.mu)
 
@@ -64,7 +62,7 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 			select {
 			case <-ctx.Done():
 				return
-			case <-g.notifier:
+			case <-g.taskNotifier:
 				// Check if we need to process tasks
 				if g.tasks.IsEmpty() {
 					continue
@@ -97,20 +95,17 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 						result, err := taskFunc()
 						if err != nil {
 							g.errOnce.Do(func() {
-								g.err = err
 								g.cancel(err)
 							})
-						} else {
-							g.resultsMu.Lock()
-							g.results = append(g.results, result)
-							g.resultsMu.Unlock()
+							return
 						}
+						g.results.Push(result)
 					}(task)
 
 					// Check if there are more tasks to process
 					if !g.tasks.IsEmpty() {
 						select {
-						case g.notifier <- token{}:
+						case g.taskNotifier <- token{}:
 						default:
 						}
 					}
@@ -126,10 +121,6 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 func (g *Group[Result]) Submit(task func() (Result, error)) error {
 	select {
 	case <-g.ctx.Done():
-		// Check if it was our internal cancellation due to error
-		if g.err != nil {
-			return g.err
-		}
 		// Check if context was canceled with cause
 		if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
 			return cause
@@ -141,7 +132,7 @@ func (g *Group[Result]) Submit(task func() (Result, error)) error {
 	}
 
 	select {
-	case g.notifier <- token{}:
+	case g.taskNotifier <- token{}:
 	default:
 	}
 	return nil
@@ -154,8 +145,12 @@ func (g *Group[Result]) Submit(task func() (Result, error)) error {
 // Note: user can continue to submit tasks after calling Wait.
 func (g *Group[Result]) Wait() ([]Result, error) {
 	// Check early exit conditions
-	if g.err != nil {
-		return nil, g.err
+	if g.ctx.Err() != nil {
+		// If context is already done, return the error
+		if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
+			return nil, cause
+		}
+		return nil, g.ctx.Err()
 	}
 
 	g.mu.Lock()
@@ -176,7 +171,7 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 		if activeTasks == 0 && pendingTasks {
 			g.mu.Unlock()
 			select {
-			case g.notifier <- token{}:
+			case g.taskNotifier <- token{}:
 			default:
 			}
 			g.mu.Lock()
@@ -202,10 +197,6 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 		// Check for context cancellation
 		select {
 		case <-g.ctx.Done():
-			// Check if it was our internal cancellation due to error
-			if g.err != nil {
-				return nil, g.err
-			}
 			// Check if context was canceled with cause
 			if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
 				return nil, cause
@@ -216,17 +207,7 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 		}
 	}
 
-	// Double-check for errors after completion
-	if g.err != nil {
-		return nil, g.err
-	}
-
-	g.resultsMu.Lock()
-	defer g.resultsMu.Unlock()
-	// Return a copy to avoid race conditions
-	resultsCopy := make([]Result, len(g.results))
-	copy(resultsCopy, g.results)
-	return resultsCopy, nil
+	return g.results.ToSlice(), nil
 }
 
 // signalCompletion safely signals that all work is complete
