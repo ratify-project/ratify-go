@@ -65,10 +65,10 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 			case <-ctx.Done():
 				return
 			case <-g.taskNotifier:
-				// check if we need to process tasks
-				if g.tasks.IsEmpty() {
-					continue
-				}
+				// // check if we need to process tasks
+				// if g.tasks.IsEmpty() {
+				// 	continue
+				// }
 
 				select {
 				case <-ctx.Done():
@@ -82,13 +82,20 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 						atomic.AddInt32(&g.activeTasks, -1)
 						continue
 					}
+					// check if there are more tasks to process
+					if !g.tasks.IsEmpty() {
+						select {
+						case g.taskNotifier <- token{}:
+						default:
+						}
+					}
 
 					// start to process the task
 					go func(f func() (Result, error)) {
 						defer func() {
 							<-g.pool
 
-							// Atomically decrement and check for completion
+							// atomically decrement and check for completion
 							remaining := atomic.AddInt32(&g.activeTasks, -1)
 							if remaining == 0 && g.tasks.IsEmpty() {
 								g.signalCompletion()
@@ -104,14 +111,6 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 						}
 						g.results.Push(result)
 					}(task)
-
-					// Check if there are more tasks to process
-					if !g.tasks.IsEmpty() {
-						select {
-						case g.taskNotifier <- token{}:
-						default:
-						}
-					}
 				}
 			}
 		}
@@ -124,11 +123,11 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 func (g *Group[Result]) Submit(task func() (Result, error)) error {
 	select {
 	case <-g.ctx.Done():
-		// Check if context was canceled with cause
+		// check if context was canceled with cause
 		if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
 			return cause
 		}
-		// Regular context cancellation
+		// regular context cancellation
 		return g.ctx.Err()
 	default:
 		g.tasks.Push(task)
@@ -153,9 +152,9 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 		return nil, errors.New("Wait() can only be called once on Group")
 	}
 
-	// Check early exit conditions
+	// check early exit conditions
 	if g.ctx.Err() != nil {
-		// If context is already done, return the error
+		// if context is already done, return the error
 		if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
 			return nil, cause
 		}
@@ -165,18 +164,18 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Wait for all work to be completed
+	// wait for all work to be completed
 	for !g.completed {
 		activeTasks := atomic.LoadInt32(&g.activeTasks)
 		pendingTasks := !g.tasks.IsEmpty()
 
-		// If no active tasks and no pending tasks, we're done
+		// if no active tasks and no pending tasks, we're done
 		if activeTasks == 0 && !pendingTasks {
 			g.completed = true
 			break
 		}
 
-		// If there are pending tasks but no active tasks, trigger processing
+		// if there are pending tasks but no active tasks, trigger processing
 		if activeTasks == 0 && pendingTasks {
 			g.mu.Unlock()
 			select {
@@ -186,7 +185,7 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 			g.mu.Lock()
 		}
 
-		// Wait for completion signal or context cancellation
+		// wait for completion signal or context cancellation
 		// Create a goroutine to handle context cancellation
 		done := make(chan struct{})
 		go func() {
@@ -203,14 +202,14 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 		g.cond.Wait()
 		close(done)
 
-		// Check for context cancellation
+		// check for context cancellation
 		select {
 		case <-g.ctx.Done():
-			// Check if context was canceled with cause
+			// check if context was canceled with cause
 			if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
 				return nil, cause
 			}
-			// Regular context cancellation
+			// regular context cancellation
 			return nil, g.ctx.Err()
 		default:
 		}
