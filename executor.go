@@ -181,7 +181,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
-func (e *Executor) verifySubjectAgainstReferrers(parentCtx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskGroup worker.Group[any], referrerTaskPool, verifierTaskPool worker.Pool) error {
+func (e *Executor) verifySubjectAgainstReferrers(parentCtx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskGroup *worker.Group[any], referrerTaskPool, verifierTaskPool worker.Pool) error {
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.

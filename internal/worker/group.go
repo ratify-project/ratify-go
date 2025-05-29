@@ -23,9 +23,9 @@ import (
 	"github.com/notaryproject/ratify-go/internal/stack"
 )
 
-type group[T any] struct {
+type Group[Result any] struct {
 	// tasks is a stack of tasks to be executed
-	tasks stack.Stack[func() (T, error)]
+	tasks stack.Stack[func() (Result, error)]
 
 	// synchronization
 	notifier    chan token
@@ -43,21 +43,17 @@ type group[T any] struct {
 
 	// results
 	resultsMu sync.Mutex
-	results   []T
+	results   []Result
 }
 
 // NewGroup creates a new group with a given size.
-func NewGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context) {
-	return newGroup[T](ctx, pool)
-}
-
-func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context) {
+func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
-	g := &group[T]{
+	g := &Group[Result]{
 		ctx:      ctxWithCancel,
 		cancel:   cancel,
 		notifier: make(chan token, 1),
-		pool:     pool,
+		pool:     sharedPool,
 	}
 	g.cond = sync.NewCond(&g.mu)
 
@@ -87,7 +83,7 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 						continue
 					}
 
-					go func(taskFunc func() (T, error)) {
+					go func(taskFunc func() (Result, error)) {
 						defer func() {
 							<-g.pool
 
@@ -126,7 +122,8 @@ func newGroup[T any](ctx context.Context, pool Pool) (*group[T], context.Context
 	return g, ctxWithCancel
 }
 
-func (g *group[T]) Submit(task func() (T, error)) error {
+// Submit adds a new task to the group for execution.
+func (g *Group[Result]) Submit(task func() (Result, error)) error {
 	select {
 	case <-g.ctx.Done():
 		// Check if it was our internal cancellation due to error
@@ -150,7 +147,12 @@ func (g *group[T]) Submit(task func() (T, error)) error {
 	return nil
 }
 
-func (g *group[T]) Wait() ([]T, error) {
+// Wait waits for all tasks to complete and returns their results.
+// If any task returns an error, it will return that error instead
+// and cancel other tasks.
+//
+// Note: user can continue to submit tasks after calling Wait.
+func (g *Group[Result]) Wait() ([]Result, error) {
 	// Check early exit conditions
 	if g.err != nil {
 		return nil, g.err
@@ -222,13 +224,13 @@ func (g *group[T]) Wait() ([]T, error) {
 	g.resultsMu.Lock()
 	defer g.resultsMu.Unlock()
 	// Return a copy to avoid race conditions
-	resultsCopy := make([]T, len(g.results))
+	resultsCopy := make([]Result, len(g.results))
 	copy(resultsCopy, g.results)
 	return resultsCopy, nil
 }
 
 // signalCompletion safely signals that all work is complete
-func (g *group[T]) signalCompletion() {
+func (g *Group[Result]) signalCompletion() {
 	g.mu.Lock()
 	g.completed = true
 	g.cond.Signal()
