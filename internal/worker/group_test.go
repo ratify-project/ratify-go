@@ -326,3 +326,40 @@ func TestGroup_NoTaskSubmissionBeforeWait(t *testing.T) {
 		t.Fatalf("expected empty results, got %v", results)
 	}
 }
+
+func TestGroup_WaitOnlyOnce(t *testing.T) {
+	pool, err := NewPool(2)
+	if err != nil {
+		t.Fatalf("failed to create pool: %v", err)
+	}
+
+	ctx := context.Background()
+	group, _ := NewGroup[int](ctx, pool)
+
+	// Submit a simple task
+	err = group.Submit(func() (int, error) {
+		return 42, nil
+	})
+	if err != nil {
+		t.Fatalf("failed to submit task: %v", err)
+	}
+
+	// First call to Wait() should succeed
+	results1, err1 := group.Wait()
+	if err1 != nil {
+		t.Fatalf("first Wait() call should succeed, got error: %v", err1)
+	}
+	if len(results1) != 1 || results1[0] != 42 {
+		t.Fatalf("expected results [42], got %v", results1)
+	}
+
+	// Second call to Wait() should return an error
+	expectedErrMsg := "Wait() can only be called once on Group"
+	results2, err2 := group.Wait()
+	if err2.Error() != expectedErrMsg {
+		t.Fatalf("expected error '%s', got '%s'", expectedErrMsg, err2.Error())
+	}
+	if results2 != nil {
+		t.Fatalf("expected nil results on second Wait() call, got %v", results2)
+	}
+}
