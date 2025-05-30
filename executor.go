@@ -180,12 +180,11 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 			})
 		}
 
+		// wait for new tasks and add them to the task queue
 		allNewTasks, err := artifactTaskGroup.Wait()
 		if err != nil {
 			return nil, nil, err
 		}
-
-		// add all new tasks to the task queue
 		for _, newTasks := range allNewTasks {
 			taskQueue = append(taskQueue, newTasks...)
 		}
@@ -322,7 +321,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 	if err != nil && err != errSubjectPruned {
 		return nil, err
 	}
-	// Filter out nil results and return the verification results.
+	// filter out nil results and return the verification results.
 	var results []*VerificationResult
 	for _, result := range verificationResults {
 		if result != nil {
