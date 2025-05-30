@@ -163,7 +163,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 			Artifact: desc,
 		},
 	}
-	taskStack := stack.Stack[*executorTask]{}
+	var taskStack stack.Stack[*executorTask]
 	taskStack.Push(rootTask)
 	for !taskStack.IsEmpty() {
 		artifactTaskGroup, ctx := worker.NewGroup[[]*executorTask](ctx, e.ConcurrencyLimit)
@@ -185,12 +185,12 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 		}
 
 		// add new tasks to the stack
-		newTaskSlice, err := artifactTaskGroup.Wait()
+		newTasksSlice, err := artifactTaskGroup.Wait()
 		if err != nil {
 			return nil, nil, err
 
 		}
-		for _, newTasks := range newTaskSlice {
+		for _, newTasks := range newTasksSlice {
 			for _, newTask := range newTasks {
 				if newTask == nil {
 					continue
