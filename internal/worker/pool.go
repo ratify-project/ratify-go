@@ -51,7 +51,7 @@ type Pool[Result any] struct {
 	hasWaited atomic.Bool
 }
 
-// NewPool creates a new dedicated pool.
+// NewPool creates a worker pool with provided size.
 //
 // Result is the type of the results returned by the tasks in the pool.
 func NewPool[Result any](ctx context.Context, size int) (*Pool[Result], context.Context) {
@@ -60,7 +60,7 @@ func NewPool[Result any](ctx context.Context, size int) (*Pool[Result], context.
 	return pool, ctx
 }
 
-// NewSharedPool creates a [Pool] that shares the provided pool slots.
+// NewSharedPool creates a worker pool that shares the provided pool slots.
 //
 // Result is the type of the results returned by the tasks in the pool.
 func NewSharedPool[Result any](ctx context.Context, sharedSlots PoolSlots) (*Pool[Result], context.Context) {
