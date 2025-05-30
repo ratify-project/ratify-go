@@ -22,14 +22,14 @@ import (
 	"time"
 )
 
-func TestSimpleGroup_Basic(t *testing.T) {
-	pool := make(Pool, 2)
+func TestPool_Basic(t *testing.T) {
+	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	group, _ := NewGroupWithSharedPool[int](ctx, pool)
+	pool, _ := NewSharedPool[int](ctx, poolSlots)
 
 	// Test empty group
-	results, err := group.Wait()
+	results, err := pool.Wait()
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -38,20 +38,20 @@ func TestSimpleGroup_Basic(t *testing.T) {
 	}
 }
 
-func TestSimpleGroup_SingleTask(t *testing.T) {
-	pool := make(Pool, 2)
+func TestPool_SingleTask(t *testing.T) {
+	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	group, _ := NewGroupWithSharedPool[int](ctx, pool)
+	pool, _ := NewSharedPool[int](ctx, poolSlots)
 
-	err := group.Go(func() (int, error) {
+	err := pool.Go(func() (int, error) {
 		return 42, nil
 	})
 	if err != nil {
 		t.Fatalf("failed to submit task: %v", err)
 	}
 
-	results, err := group.Wait()
+	results, err := pool.Wait()
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -61,14 +61,14 @@ func TestSimpleGroup_SingleTask(t *testing.T) {
 	}
 }
 
-func TestSimpleGroup_MultipleTasks(t *testing.T) {
-	pool := make(Pool, 3)
+func TestPool_MultipleTasks(t *testing.T) {
+	poolSlots := make(PoolSlots, 3)
 	ctx := context.Background()
-	group, _ := NewGroupWithSharedPool[int](ctx, pool)
+	pool, _ := NewSharedPool[int](ctx, poolSlots)
 
 	for i := 1; i <= 5; i++ {
 		i := i // capture loop variable
-		err := group.Go(func() (int, error) {
+		err := pool.Go(func() (int, error) {
 			return i, nil
 		})
 		if err != nil {
@@ -76,7 +76,7 @@ func TestSimpleGroup_MultipleTasks(t *testing.T) {
 		}
 	}
 
-	results, err := group.Wait()
+	results, err := pool.Wait()
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -86,22 +86,22 @@ func TestSimpleGroup_MultipleTasks(t *testing.T) {
 	}
 }
 
-func TestSimpleGroup_WithError(t *testing.T) {
-	pool := make(Pool, 2)
+func TestPool_WithError(t *testing.T) {
+	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	group, _ := NewGroupWithSharedPool[int](ctx, pool)
+	pool, _ := NewSharedPool[int](ctx, poolSlots)
 
 	expectedErr := errors.New("task error")
 
-	err := group.Go(func() (int, error) {
+	err := pool.Go(func() (int, error) {
 		return 0, expectedErr
 	})
 	if err != nil {
 		t.Fatalf("failed to submit task: %v", err)
 	}
 
-	err = group.Go(func() (int, error) {
+	err = pool.Go(func() (int, error) {
 		time.Sleep(100 * time.Millisecond) // simulate work
 		return 42, nil
 	})
@@ -109,7 +109,7 @@ func TestSimpleGroup_WithError(t *testing.T) {
 		t.Fatalf("failed to submit task: %v", err)
 	}
 
-	_, err = group.Wait()
+	_, err = pool.Wait()
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
@@ -119,20 +119,20 @@ func TestSimpleGroup_WithError(t *testing.T) {
 	}
 }
 
-func TestSimpleGroup_WaitCalledTwice(t *testing.T) {
-	pool := make(Pool, 2)
+func TestPool_WaitCalledTwice(t *testing.T) {
+	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	group, _ := NewGroupWithSharedPool[int](ctx, pool)
+	pool, _ := NewSharedPool[int](ctx, poolSlots)
 
 	// First call should succeed
-	_, err := group.Wait()
+	_, err := pool.Wait()
 	if err != nil {
 		t.Fatalf("first Wait() call failed: %v", err)
 	}
 
 	// Second call should fail
-	_, err = group.Wait()
+	_, err = pool.Wait()
 	if err == nil {
 		t.Fatal("expected error on second Wait() call, got nil")
 	}
