@@ -198,7 +198,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	// referrer artifacts.
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
-			workerGroup.Go(func() (*ValidationReport, error) {
+			if err := workerGroup.Go(func() (*ValidationReport, error) {
 				results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator, verifierTaskPool)
 				if err != nil {
 					if errors.Is(err, errSubjectPruned) && len(results) > 0 {
@@ -220,18 +220,20 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 					Results:  results,
 					Artifact: referrer,
 				}, nil
-			})
+			}); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, errSubjectPruned) {
 		return nil, fmt.Errorf("failed to list referrers artifact %s: %w", artifact, err)
 	}
 
 	isSubjectPruned := false
 	artifactReports, err := workerGroup.Wait()
 	if err != nil {
-		if err != errSubjectPruned {
+		if !errors.Is(err, errSubjectPruned) {
 			return nil, fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
 		}
 		isSubjectPruned = true
@@ -314,7 +316,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 		})
 	}
 	verificationResults, err := workerGroup.Wait()
-	if err != nil && err != errSubjectPruned {
+	if err != nil && !errors.Is(err, errSubjectPruned) {
 		return nil, err
 	}
 	return slices.DeleteFunc(verificationResults, func(result *VerificationResult) bool {
