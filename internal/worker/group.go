@@ -46,14 +46,7 @@ type Group[Result any] struct {
 }
 
 func NewGroup[Result any](ctx context.Context, poolSize int) (*Group[Result], context.Context) {
-	ctxWithCancel, cancel := context.WithCancelCause(ctx)
-	return &Group[Result]{
-		pool:          make(Pool, poolSize),
-		dedicatedPool: true,
-		ctx:           ctxWithCancel,
-		cancel:        cancel,
-		completed:     make(chan ticket),
-	}, ctxWithCancel
+	return NewGroupWithSharedPool[Result](ctx, make(Pool, poolSize))
 }
 
 func NewGroupWithSharedPool[Result any](ctx context.Context, sharedPool Pool) (*Group[Result], context.Context) {
