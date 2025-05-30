@@ -47,6 +47,10 @@ type Pool[Result any] struct {
 	results   []Result
 	resultsMu sync.Mutex
 
+	// panic recovery
+	panicValue any
+	panicOnce  sync.Once
+
 	// hasWaited is used to ensure Wait() can only be called once
 	hasWaited atomic.Bool
 }
@@ -93,7 +97,14 @@ func (p *Pool[Result]) Go(task func() (Result, error)) error {
 	p.wg.Add(1)
 	go func() {
 		defer func() {
-			<-p.poolSlots // Release pool slot
+			if r := recover(); r != nil {
+				// capture the panic and cancel the context
+				p.panicOnce.Do(func() {
+					p.panicValue = r
+					p.cancel(errors.New("goroutine panicked"))
+				})
+			}
+			<-p.poolSlots // release pool slot
 			p.wg.Done()
 		}()
 
@@ -138,6 +149,11 @@ func (p *Pool[Result]) Wait() ([]Result, error) {
 	case <-p.ctx.Done():
 		// context was cancelled, then wait for cleanup
 		<-p.done
+	}
+
+	// check if a panic occurred and re-raise it
+	if p.panicValue != nil {
+		panic(p.panicValue)
 	}
 
 	if cause := context.Cause(p.ctx); cause != nil {

@@ -28,7 +28,7 @@ func TestPool_Basic(t *testing.T) {
 	ctx := context.Background()
 	pool, _ := NewSharedPool[int](ctx, poolSlots)
 
-	// Test empty group
+	// test empty group
 	results, err := pool.Wait()
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -125,15 +125,90 @@ func TestPool_WaitCalledTwice(t *testing.T) {
 	ctx := context.Background()
 	pool, _ := NewSharedPool[int](ctx, poolSlots)
 
-	// First call should succeed
+	// first call should succeed
 	_, err := pool.Wait()
 	if err != nil {
 		t.Fatalf("first Wait() call failed: %v", err)
 	}
 
-	// Second call should fail
+	// second call should fail
 	_, err = pool.Wait()
 	if err == nil {
 		t.Fatal("expected error on second Wait() call, got nil")
 	}
+}
+
+func TestPool_PanicRecovery(t *testing.T) {
+	poolSlots := make(PoolSlots, 2)
+
+	ctx := context.Background()
+	pool, _ := NewSharedPool[int](ctx, poolSlots)
+
+	// add a task that panics
+	err := pool.Go(func() (int, error) {
+		panic("test panic")
+	})
+	if err != nil {
+		t.Fatalf("unexpected error adding task: %v", err)
+	}
+
+	// add a normal task
+	err = pool.Go(func() (int, error) {
+		return 42, nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error adding task: %v", err)
+	}
+
+	// wait should re-raise the panic
+	defer func() {
+		if r := recover(); r != nil {
+			if r != "test panic" {
+				t.Fatalf("expected panic value 'test panic', got %v", r)
+			}
+		} else {
+			t.Fatal("expected panic to be re-raised, but no panic occurred")
+		}
+	}()
+
+	_, _ = pool.Wait()
+	t.Fatal("Wait() should have panicked but returned normally")
+}
+
+func TestPool_MultiplePanics(t *testing.T) {
+	poolSlots := make(PoolSlots, 3)
+
+	ctx := context.Background()
+	pool, _ := NewSharedPool[int](ctx, poolSlots)
+
+	// add multiple tasks that panic
+	err := pool.Go(func() (int, error) {
+		panic("first panic")
+	})
+	if err != nil {
+		t.Fatalf("unexpected error adding task: %v", err)
+	}
+
+	err = pool.Go(func() (int, error) {
+		panic("second panic")
+	})
+	if err != nil {
+		t.Fatalf("unexpected error adding task: %v", err)
+	}
+
+	// only the first panic should be captured and re-raised
+	defer func() {
+		if r := recover(); r != nil {
+			// should be one of the panic values, but we can't guarantee which one
+			// since goroutines execute concurrently
+			if r != "first panic" && r != "second panic" {
+				t.Fatalf("expected panic value 'first panic' or 'second panic', got %v", r)
+			}
+		} else {
+			t.Fatal("expected panic to be re-raised, but no panic occurred")
+		}
+	}()
+
+	_, _ = pool.Wait()
+	t.Fatal("Wait() should have panicked but returned normally")
 }
