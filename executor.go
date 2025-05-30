@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/notaryproject/ratify-go/internal/stack"
 	"github.com/notaryproject/ratify-go/internal/worker"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/registry"
@@ -103,6 +102,9 @@ func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOp
 	if err := validateExecutorSetup(e.Store, e.Verifiers); err != nil {
 		return nil, err
 	}
+	if e.ConcurrencyLimit <= 0 {
+		return nil, fmt.Errorf("concurrency limit (%d) must be greater than 0", e.ConcurrencyLimit)
+	}
 
 	aggregatedVerifierReports, evaluator, err := e.aggregateVerifierReports(ctx, opts)
 	if err != nil {
@@ -163,40 +165,29 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 			Artifact: desc,
 		},
 	}
-	var taskStack stack.Stack[*executorTask]
-	taskStack.Push(rootTask)
-	for !taskStack.IsEmpty() {
+	taskQueue := []*executorTask{rootTask}
+	for len(taskQueue) > 0 {
 		artifactTaskGroup, ctx := worker.NewGroup[[]*executorTask](ctx, e.ConcurrencyLimit)
-		// prepare batch processing
-		taskBatch := make([]*executorTask, 0, e.ConcurrencyLimit)
-		for i := 0; i < e.ConcurrencyLimit && !taskStack.IsEmpty(); i++ {
-			task, ok := taskStack.TryPop()
-			if !ok {
-				break
-			}
-			taskBatch = append(taskBatch, task)
-		}
 
-		// batch process the tasks
-		for _, task := range taskBatch {
+		// prepare batch of tasks to process
+		currentBatch := taskQueue
+		taskQueue = nil
+
+		// start batch processing
+		for _, task := range currentBatch {
 			artifactTaskGroup.Go(func() ([]*executorTask, error) {
 				return e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes, evaluator, referrerTaskPool, verifierTaskPool)
 			})
 		}
 
-		// add new tasks to the stack
-		newTasksSlice, err := artifactTaskGroup.Wait()
+		allNewTasks, err := artifactTaskGroup.Wait()
 		if err != nil {
 			return nil, nil, err
-
 		}
-		for _, newTasks := range newTasksSlice {
-			for _, newTask := range newTasks {
-				if newTask == nil {
-					continue
-				}
-				taskStack.Push(newTask)
-			}
+
+		// add all new tasks to the task queue
+		for _, newTasks := range allNewTasks {
+			taskQueue = append(taskQueue, newTasks...)
 		}
 	}
 

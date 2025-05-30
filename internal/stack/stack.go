@@ -25,25 +25,12 @@ func (s *Stack[T]) Push(keys ...T) {
 
 // Pop pops keys from the stack.
 func (s *Stack[T]) Pop() T {
-	v, _ := s.TryPop()
-	return v
-}
-
-func (s *Stack[T]) TryPop() (T, bool) {
-	if len(*s) == 0 {
-		var zero T
-		return zero, false
-	}
 	t := (*s)[len(*s)-1]
 	*s = (*s)[:len(*s)-1]
-	return t, true
+	return t
 }
 
 // IsEmpty checks if the stack is empty.
 func (s *Stack[T]) Len() int {
 	return len(*s)
-}
-
-func (s *Stack[T]) IsEmpty() bool {
-	return len(*s) == 0
 }
