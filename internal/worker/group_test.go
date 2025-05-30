@@ -23,10 +23,7 @@ import (
 )
 
 func TestSimpleGroup_Basic(t *testing.T) {
-	pool, err := NewPool(2)
-	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
-	}
+	pool := make(Pool, 2)
 
 	ctx := context.Background()
 	group, _ := NewGroupWithSharedPool[int](ctx, pool)
@@ -42,15 +39,12 @@ func TestSimpleGroup_Basic(t *testing.T) {
 }
 
 func TestSimpleGroup_SingleTask(t *testing.T) {
-	pool, err := NewPool(2)
-	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
-	}
+	pool := make(Pool, 2)
 
 	ctx := context.Background()
 	group, _ := NewGroupWithSharedPool[int](ctx, pool)
 
-	err = group.Go(func() (int, error) {
+	err := group.Go(func() (int, error) {
 		return 42, nil
 	})
 	if err != nil {
@@ -68,17 +62,13 @@ func TestSimpleGroup_SingleTask(t *testing.T) {
 }
 
 func TestSimpleGroup_MultipleTasks(t *testing.T) {
-	pool, err := NewPool(3)
-	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
-	}
-
+	pool := make(Pool, 3)
 	ctx := context.Background()
 	group, _ := NewGroupWithSharedPool[int](ctx, pool)
 
 	for i := 1; i <= 5; i++ {
 		i := i // capture loop variable
-		err = group.Go(func() (int, error) {
+		err := group.Go(func() (int, error) {
 			return i, nil
 		})
 		if err != nil {
@@ -97,17 +87,14 @@ func TestSimpleGroup_MultipleTasks(t *testing.T) {
 }
 
 func TestSimpleGroup_WithError(t *testing.T) {
-	pool, err := NewPool(2)
-	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
-	}
+	pool := make(Pool, 2)
 
 	ctx := context.Background()
 	group, _ := NewGroupWithSharedPool[int](ctx, pool)
 
 	expectedErr := errors.New("task error")
 
-	err = group.Go(func() (int, error) {
+	err := group.Go(func() (int, error) {
 		return 0, expectedErr
 	})
 	if err != nil {
@@ -133,16 +120,13 @@ func TestSimpleGroup_WithError(t *testing.T) {
 }
 
 func TestSimpleGroup_WaitCalledTwice(t *testing.T) {
-	pool, err := NewPool(2)
-	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
-	}
+	pool := make(Pool, 2)
 
 	ctx := context.Background()
 	group, _ := NewGroupWithSharedPool[int](ctx, pool)
 
 	// First call should succeed
-	_, err = group.Wait()
+	_, err := group.Wait()
 	if err != nil {
 		t.Fatalf("first Wait() call failed: %v", err)
 	}

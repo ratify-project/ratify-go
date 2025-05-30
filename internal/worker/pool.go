@@ -15,19 +15,8 @@ limitations under the License.
 
 package worker
 
-import (
-	"fmt"
-)
-
 type ticket struct{}
 
 // Pool is a channel-based semaphore that limits the
 // number of concurrent tasks.
 type Pool chan ticket
-
-func NewPool(size int) (Pool, error) {
-	if size <= 0 {
-		return nil, fmt.Errorf("invalid pool size: %d", size)
-	}
-	return make(chan ticket, size), nil
-}

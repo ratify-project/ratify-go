@@ -149,15 +149,9 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 
 	// create worker pools for referrer and verifier tasks
-	referrerTaskPool, err := worker.NewPool(e.ConcurrencyLimit)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create a new referrer worker pool: %w", err)
-	}
+	referrerTaskPool := make(worker.Pool, e.ConcurrencyLimit)
 	defer close(referrerTaskPool)
-	verifierTaskPool, err := worker.NewPool(e.ConcurrencyLimit)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create a new verifier worker pool: %w", err)
-	}
+	verifierTaskPool := make(worker.Pool, e.ConcurrencyLimit)
 	defer close(verifierTaskPool)
 
 	rootTask := &executorTask{
