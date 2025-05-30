@@ -31,14 +31,14 @@ type Group[Result any] struct {
 	results stack.Stack[Result]
 
 	// synchronization
-	pool          chan token // shared pool for limiting concurrency
-	activeTasks   int32      // atomic counter for active tasks
-	taskNotifier  chan token // notify new tasks for processing
-	mu            sync.Mutex // protects completion state
-	completed     bool       // indicates all work is complete
-	cond          *sync.Cond // condition variable for completion signaling
-	completedCh   chan token // channel to signal completion
-	schedulerDone chan token // channel to signal scheduler goroutine completion
+	pool          chan ticket // shared pool for limiting concurrency
+	activeTasks   int32       // atomic counter for active tasks
+	taskNotifier  chan ticket // notify new tasks for processing
+	mu            sync.Mutex  // protects completion state
+	completed     bool        // indicates all work is complete
+	cond          *sync.Cond  // condition variable for completion signaling
+	completedCh   chan ticket // channel to signal completion
+	schedulerDone chan ticket // channel to signal scheduler goroutine completion
 
 	// error handling
 	ctx     context.Context
@@ -55,10 +55,10 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 	g := &Group[Result]{
 		ctx:           ctxWithCancel,
 		cancel:        cancel,
-		taskNotifier:  make(chan token, 1),
+		taskNotifier:  make(chan ticket, 1),
 		pool:          sharedPool,
-		completedCh:   make(chan token),
-		schedulerDone: make(chan token),
+		completedCh:   make(chan ticket),
+		schedulerDone: make(chan ticket),
 	}
 	g.cond = sync.NewCond(&g.mu)
 
@@ -77,7 +77,7 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 					return
 				case <-ctx.Done():
 					return
-				case g.pool <- token{}:
+				case g.pool <- ticket{}:
 					atomic.AddInt32(&g.activeTasks, 1)
 					task, ok := g.tasks.TryPop()
 					if !ok {
@@ -89,7 +89,7 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 					// check if there are more tasks to process
 					if !g.tasks.IsEmpty() {
 						select {
-						case g.taskNotifier <- token{}:
+						case g.taskNotifier <- ticket{}:
 						default:
 						}
 					}
@@ -138,7 +138,7 @@ func (g *Group[Result]) Submit(task func() (Result, error)) error {
 	}
 
 	select {
-	case g.taskNotifier <- token{}:
+	case g.taskNotifier <- ticket{}:
 	default:
 	}
 	return nil
@@ -188,7 +188,7 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 		if activeTasks == 0 && pendingTasks {
 			g.mu.Unlock()
 			select {
-			case g.taskNotifier <- token{}:
+			case g.taskNotifier <- ticket{}:
 			default:
 			}
 			g.mu.Lock()

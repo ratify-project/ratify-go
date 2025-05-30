@@ -62,10 +62,10 @@ type Scheduler[Result any] struct {
 	results stack.Stack[Result]
 	pool    Pool
 	state   *TaskState
-	
+
 	ctx    context.Context
 	cancel context.CancelCauseFunc
-	
+
 	taskCh chan struct{}
 	done   chan struct{}
 	once   sync.Once
@@ -107,7 +107,7 @@ func (s *Scheduler[Result]) Start() {
 
 func (s *Scheduler[Result]) run() {
 	defer close(s.done)
-	
+
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -123,16 +123,16 @@ func (s *Scheduler[Result]) processAvailableTasks() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case s.pool <- token{}:
+		case s.pool <- ticket{}:
 			task, ok := s.tasks.TryPop()
 			if !ok {
 				<-s.pool // release token if no task
 				return
 			}
-			
+
 			s.state.IncrementActive()
 			go s.executeTask(task)
-			
+
 			// Continue if more tasks available
 			if s.tasks.IsEmpty() {
 				return
@@ -147,13 +147,13 @@ func (s *Scheduler[Result]) executeTask(task func() (Result, error)) {
 	defer func() {
 		<-s.pool
 		remaining := s.state.DecrementActive()
-		
+
 		// Check for completion
 		if remaining == 0 && s.tasks.IsEmpty() {
 			s.state.SetCompleted()
 		}
 	}()
-	
+
 	result, err := task()
 	if err != nil {
 		s.once.Do(func() {
@@ -161,7 +161,7 @@ func (s *Scheduler[Result]) executeTask(task func() (Result, error)) {
 		})
 		return
 	}
-	
+
 	s.results.Push(result)
 }
 
@@ -170,7 +170,7 @@ func (s *Scheduler[Result]) Wait() ([]Result, error) {
 		s.cancel(context.Canceled)
 		<-s.done
 	}()
-	
+
 	// Wait for completion using polling with backoff
 	for !s.isWorkComplete() {
 		select {
@@ -184,7 +184,7 @@ func (s *Scheduler[Result]) Wait() ([]Result, error) {
 			if s.state.ActiveCount() == 0 && !s.tasks.IsEmpty() {
 				s.notifyNewTask()
 			}
-			
+
 			// Brief sleep to avoid busy waiting
 			select {
 			case <-s.ctx.Done():
@@ -193,7 +193,7 @@ func (s *Scheduler[Result]) Wait() ([]Result, error) {
 			}
 		}
 	}
-	
+
 	return s.results.ToSlice(), nil
 }
 
@@ -212,7 +212,7 @@ type SimplifiedGroup[Result any] struct {
 func NewSimplifiedGroup[Result any](ctx context.Context, sharedPool Pool) (*SimplifiedGroup[Result], context.Context) {
 	scheduler := NewScheduler[Result](ctx, sharedPool)
 	scheduler.Start()
-	
+
 	return &SimplifiedGroup[Result]{
 		scheduler: scheduler,
 	}, scheduler.ctx
@@ -221,29 +221,29 @@ func NewSimplifiedGroup[Result any](ctx context.Context, sharedPool Pool) (*Simp
 func (g *SimplifiedGroup[Result]) Submit(task func() (Result, error)) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	
+
 	if g.waited {
 		return errors.New("cannot submit tasks after Wait() has been called")
 	}
-	
+
 	return g.scheduler.Submit(task)
 }
 
 func (g *SimplifiedGroup[Result]) Wait() ([]Result, error) {
 	var results []Result
 	var err error
-	
+
 	g.waitOnce.Do(func() {
 		g.mu.Lock()
 		g.waited = true
 		g.mu.Unlock()
-		
+
 		results, err = g.scheduler.Wait()
 	})
-	
+
 	if results == nil && err == nil {
 		return nil, errors.New("Wait() can only be called once on Group")
 	}
-	
+
 	return results, err
 }
