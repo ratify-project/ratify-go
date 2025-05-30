@@ -15,73 +15,35 @@ limitations under the License.
 
 package stack
 
-import "sync"
-
-// Stack is a concurrent-safe generic stack implementation.
-type Stack[T any] struct {
-	items []T
-	mu    sync.RWMutex
-}
+// Stack is a generic stack implementation.
+type Stack[T any] []T
 
 // Push pushes keys to the stack.
 func (s *Stack[T]) Push(keys ...T) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.items = append(s.items, keys...)
+	*s = append(*s, keys...)
 }
 
-// Pop pops a key from the stack.
+// Pop pops keys from the stack.
 func (s *Stack[T]) Pop() T {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if len(s.items) == 0 {
-		var zero T
-		return zero
-	}
-
-	t := s.items[len(s.items)-1]
-	s.items = s.items[:len(s.items)-1]
-	return t
+	v, _ := s.TryPop()
+	return v
 }
 
-// TryPop attempts to pop an item from the stack.
-// Returns the popped item and true if successful, zero value and false if empty.
 func (s *Stack[T]) TryPop() (T, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if len(s.items) == 0 {
+	if len(*s) == 0 {
 		var zero T
 		return zero, false
 	}
-
-	t := s.items[len(s.items)-1]
-	s.items = s.items[:len(s.items)-1]
+	t := (*s)[len(*s)-1]
+	*s = (*s)[:len(*s)-1]
 	return t, true
 }
 
-// Len returns the number of elements in the stack.
+// IsEmpty checks if the stack is empty.
 func (s *Stack[T]) Len() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.items)
+	return len(*s)
 }
 
-// IsEmpty returns true if the stack is empty.
 func (s *Stack[T]) IsEmpty() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.items) == 0
-}
-
-// ToSlice returns a the stack's items as a slice.
-//
-// The returned slice is the raw slice of the stack's items.
-// Modifying the slice will modify the stack. Please take care
-// about race conditions when using the returned slice.
-func (s *Stack[T]) ToSlice() []T {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.items[:]
+	return len(*s) == 0
 }

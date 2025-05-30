@@ -25,9 +25,10 @@ import (
 // Group is a much simpler version that uses sync.WaitGroup
 // and eliminates most of the complexity while keeping the same interface
 type Group[Result any] struct {
-	pool   Pool
-	ctx    context.Context
-	cancel context.CancelCauseFunc
+	isDedicatedPool bool
+	pool            Pool
+	ctx             context.Context
+	cancel          context.CancelCauseFunc
 
 	completed chan ticket
 	wg        sync.WaitGroup
@@ -40,7 +41,18 @@ type Group[Result any] struct {
 	resultsMu sync.Mutex
 }
 
-func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result], context.Context) {
+func NewGroup[Result any](ctx context.Context, poolSize int) (*Group[Result], context.Context) {
+	ctxWithCancel, cancel := context.WithCancelCause(ctx)
+	return &Group[Result]{
+		pool:            make(Pool, poolSize),
+		isDedicatedPool: true,
+		ctx:             ctxWithCancel,
+		cancel:          cancel,
+		completed:       make(chan ticket),
+	}, ctxWithCancel
+}
+
+func NewGroupWithSharedPool[Result any](ctx context.Context, sharedPool Pool) (*Group[Result], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
 	return &Group[Result]{
 		pool:      sharedPool,
@@ -92,6 +104,12 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 	if !g.waitOnce() {
 		return nil, errors.New("Wait() can only be called once on SimpleGroup")
 	}
+
+	defer func() {
+		if g.isDedicatedPool {
+			close(g.pool)
+		}
+	}()
 
 	// convert g.wg.Wait() to a channel to avoid blocking
 	go func() {
