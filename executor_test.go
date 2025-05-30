@@ -663,13 +663,6 @@ func TestValidateArtifact(t *testing.T) {
 				Subject: testImage,
 			},
 			store: &mockStore{
-				// referrers structure:
-				// testImage
-				// └── testArtifact1
-				//     ├── testArtifact2
-				//     |   └── testArtifact4
-				//     |       └── testArtifact5
-				//     └── testArtifact3
 				tagToDesc: map[string]ocispec.Descriptor{
 					testImage: {
 						Digest: testDigest1,
@@ -831,7 +824,7 @@ func TestValidateArtifact(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			executor, _ := NewExecutor(tt.store, tt.verifiers, tt.policyEnforcer, 1)
+			executor, _ := NewExecutor(tt.store, tt.verifiers, tt.policyEnforcer, 100)
 			got, err := executor.ValidateArtifact(context.Background(), tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateArtifact() error = %v, wantErr %v", err, tt.wantErr)
