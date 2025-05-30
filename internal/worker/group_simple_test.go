@@ -50,7 +50,7 @@ func TestSimpleGroup_SingleTask(t *testing.T) {
 	ctx := context.Background()
 	group, _ := NewGroup[int](ctx, pool)
 
-	err = group.Submit(func() (int, error) {
+	err = group.Go(func() (int, error) {
 		return 42, nil
 	})
 	if err != nil {
@@ -78,7 +78,7 @@ func TestSimpleGroup_MultipleTasks(t *testing.T) {
 
 	for i := 1; i <= 5; i++ {
 		i := i // capture loop variable
-		err = group.Submit(func() (int, error) {
+		err = group.Go(func() (int, error) {
 			return i, nil
 		})
 		if err != nil {
@@ -107,14 +107,14 @@ func TestSimpleGroup_WithError(t *testing.T) {
 
 	expectedErr := errors.New("task error")
 
-	err = group.Submit(func() (int, error) {
+	err = group.Go(func() (int, error) {
 		return 0, expectedErr
 	})
 	if err != nil {
 		t.Fatalf("failed to submit task: %v", err)
 	}
 
-	err = group.Submit(func() (int, error) {
+	err = group.Go(func() (int, error) {
 		time.Sleep(100 * time.Millisecond) // simulate work
 		return 42, nil
 	})

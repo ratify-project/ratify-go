@@ -168,7 +168,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 	// Submit the root task to the worker pool to start processing.
 	artifactTaskGroup, ctx := worker.NewGroup[any](ctx, artifactTaskPool)
-	artifactTaskGroup.Submit(func() (any, error) {
+	artifactTaskGroup.Go(func() (any, error) {
 		return nil, e.verifySubjectAgainstReferrers(ctx, rootTask, repo, opts.ReferenceTypes, evaluator, artifactTaskGroup, referrerTaskPool, verifierTaskPool)
 	})
 
@@ -190,7 +190,7 @@ func (e *Executor) verifySubjectAgainstReferrers(parentCtx context.Context, task
 	referrerTaskGroup, ctx := worker.NewGroup[*ValidationReport](parentCtx, referrerTaskPool)
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
-			referrerTaskGroup.Submit(func() (*ValidationReport, error) {
+			referrerTaskGroup.Go(func() (*ValidationReport, error) {
 				results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator, verifierTaskPool)
 				if err != nil {
 					if errors.Is(err, errSubjectPruned) && len(results) > 0 {
@@ -250,7 +250,7 @@ func (e *Executor) verifySubjectAgainstReferrers(parentCtx context.Context, task
 				artifactDesc:  artifactReport.Artifact,
 				subjectReport: artifactReport,
 			}
-			artifactTaskGroup.Submit(func() (any, error) {
+			artifactTaskGroup.Go(func() (any, error) {
 				return nil, e.verifySubjectAgainstReferrers(parentCtx, task, repo, referenceTypes, evaluator, artifactTaskGroup, referrerTaskPool, verifierTaskPool)
 			})
 		}
@@ -267,7 +267,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			continue
 		}
 
-		verifierTaskGroup.Submit(func() (*VerificationResult, error) {
+		verifierTaskGroup.Go(func() (*VerificationResult, error) {
 			if evaluator != nil {
 				prunedState, err := evaluator.Pruned(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifier.Name())
 				if err != nil {

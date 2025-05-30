@@ -50,7 +50,7 @@ func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result],
 	}, ctxWithCancel
 }
 
-func (g *Group[Result]) Submit(task func() (Result, error)) error {
+func (g *Group[Result]) Go(task func() (Result, error)) error {
 	select {
 	case <-g.ctx.Done():
 		if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
@@ -77,9 +77,9 @@ func (g *Group[Result]) Submit(task func() (Result, error)) error {
 			g.errOnce.Do(func() {
 				g.cancel(err)
 			})
-			return
 		}
 
+		// add result for both success and error cases
 		g.resultsMu.Lock()
 		g.results = append(g.results, result)
 		g.resultsMu.Unlock()
