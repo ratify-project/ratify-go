@@ -22,9 +22,9 @@ import (
 	"sync/atomic"
 )
 
-// SimpleGroup is a much simpler version that uses sync.WaitGroup
+// Group is a much simpler version that uses sync.WaitGroup
 // and eliminates most of the complexity while keeping the same interface
-type SimpleGroup[Result any] struct {
+type Group[Result any] struct {
 	pool   Pool
 	ctx    context.Context
 	cancel context.CancelCauseFunc
@@ -33,16 +33,16 @@ type SimpleGroup[Result any] struct {
 	wg        sync.WaitGroup
 	errOnce   sync.Once
 
-	waitCalled int32
+	hasWaited atomic.Bool
 
 	// results stores the results of completed tasks
 	results   []Result
 	resultsMu sync.Mutex
 }
 
-func NewSimpleGroup[Result any](ctx context.Context, sharedPool Pool) (*SimpleGroup[Result], context.Context) {
+func NewGroup[Result any](ctx context.Context, sharedPool Pool) (*Group[Result], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
-	return &SimpleGroup[Result]{
+	return &Group[Result]{
 		pool:      sharedPool,
 		ctx:       ctxWithCancel,
 		cancel:    cancel,
@@ -50,7 +50,7 @@ func NewSimpleGroup[Result any](ctx context.Context, sharedPool Pool) (*SimpleGr
 	}, ctxWithCancel
 }
 
-func (g *SimpleGroup[Result]) Submit(task func() (Result, error)) error {
+func (g *Group[Result]) Submit(task func() (Result, error)) error {
 	select {
 	case <-g.ctx.Done():
 		if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
@@ -88,12 +88,12 @@ func (g *SimpleGroup[Result]) Submit(task func() (Result, error)) error {
 	return nil
 }
 
-func (g *SimpleGroup[Result]) Wait() ([]Result, error) {
+func (g *Group[Result]) Wait() ([]Result, error) {
 	if !g.waitOnce() {
 		return nil, errors.New("Wait() can only be called once on SimpleGroup")
 	}
 
-	// convert g.wg.Wait() to a done chan to avoid blocking
+	// convert g.wg.Wait() to a channel to avoid blocking
 	go func() {
 		g.wg.Wait()
 		close(g.completed)
@@ -107,18 +107,15 @@ func (g *SimpleGroup[Result]) Wait() ([]Result, error) {
 		<-g.completed
 	}
 
-	// Check for errors
 	if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
 		return g.results, cause
 	}
-
 	if g.ctx.Err() != nil {
 		return g.results, g.ctx.Err()
 	}
-
 	return g.results, nil
 }
 
-func (g *SimpleGroup[Result]) waitOnce() bool {
-	return atomic.CompareAndSwapInt32(&g.waitCalled, 0, 1)
+func (g *Group[Result]) waitOnce() bool {
+	return g.hasWaited.CompareAndSwap(false, true)
 }

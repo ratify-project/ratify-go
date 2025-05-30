@@ -29,7 +29,7 @@ func TestSimpleGroup_Basic(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	group, _ := NewSimpleGroup[int](ctx, pool)
+	group, _ := NewGroup[int](ctx, pool)
 
 	// Test empty group
 	results, err := group.Wait()
@@ -48,7 +48,7 @@ func TestSimpleGroup_SingleTask(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	group, _ := NewSimpleGroup[int](ctx, pool)
+	group, _ := NewGroup[int](ctx, pool)
 
 	err = group.Submit(func() (int, error) {
 		return 42, nil
@@ -74,7 +74,7 @@ func TestSimpleGroup_MultipleTasks(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	group, _ := NewSimpleGroup[int](ctx, pool)
+	group, _ := NewGroup[int](ctx, pool)
 
 	for i := 1; i <= 5; i++ {
 		i := i // capture loop variable
@@ -103,10 +103,10 @@ func TestSimpleGroup_WithError(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	group, _ := NewSimpleGroup[int](ctx, pool)
+	group, _ := NewGroup[int](ctx, pool)
 
 	expectedErr := errors.New("task error")
-	
+
 	err = group.Submit(func() (int, error) {
 		return 0, expectedErr
 	})
@@ -126,7 +126,7 @@ func TestSimpleGroup_WithError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error, got nil")
 	}
-	
+
 	if err.Error() != expectedErr.Error() {
 		t.Fatalf("expected error %v, got %v", expectedErr, err)
 	}
@@ -139,7 +139,7 @@ func TestSimpleGroup_WaitCalledTwice(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	group, _ := NewSimpleGroup[int](ctx, pool)
+	group, _ := NewGroup[int](ctx, pool)
 
 	// First call should succeed
 	_, err = group.Wait()
