@@ -171,9 +171,12 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 		// start batch processing
 		for _, task := range currentBatch {
-			workerGroup.Go(func() ([]*executorTask, error) {
+			if err := workerGroup.Go(func() ([]*executorTask, error) {
 				return e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes, evaluator, referrerTaskPool, verifierTaskPool)
-			})
+			}); err != nil {
+				_, _ = workerGroup.Wait()
+				return nil, nil, fmt.Errorf("failed to process task for artifact %s: %w", task.artifact.String(), err)
+			}
 		}
 
 		// wait for new tasks and add them to the task queue
@@ -227,6 +230,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 		return nil
 	})
 	if err != nil && !errors.Is(err, errSubjectPruned) {
+		_, _ = workerGroup.Wait()
 		return nil, fmt.Errorf("failed to list referrers artifact %s: %w", artifact, err)
 	}
 
@@ -276,7 +280,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			continue
 		}
 
-		workerGroup.Go(func() (*VerificationResult, error) {
+		if err := workerGroup.Go(func() (*VerificationResult, error) {
 			if evaluator != nil {
 				prunedState, err := evaluator.Pruned(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifier.Name())
 				if err != nil {
@@ -313,7 +317,10 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			}
 
 			return verifierReport, nil
-		})
+		}); err != nil {
+			// error will be handled by Wait()
+			break
+		}
 	}
 	verificationResults, err := workerGroup.Wait()
 	if err != nil && !errors.Is(err, errSubjectPruned) {
