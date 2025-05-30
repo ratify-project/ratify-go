@@ -29,13 +29,14 @@ type Group[Result any] struct {
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 
-	// Pool is a channel that limits the number of concurrent tasks
+	// pool is a channel that limits the number of concurrent tasks
 	pool          Pool
 	dedicatedPool bool
 
-	completed chan ticket
-	wg        sync.WaitGroup
-	errOnce   sync.Once
+	// done is a channel that signals when all tasks are done
+	done    chan struct{}
+	wg      sync.WaitGroup
+	errOnce sync.Once
 
 	// results stores the results of completed tasks
 	results   []Result
@@ -45,20 +46,32 @@ type Group[Result any] struct {
 	hasWaited atomic.Bool
 }
 
+// NewGroup creates a new Group with a dedicated pool of size poolSize.
+//
+// Result is the type of the results returned by the tasks in the group.
 func NewGroup[Result any](ctx context.Context, poolSize int) (*Group[Result], context.Context) {
-	return NewGroupWithSharedPool[Result](ctx, make(Pool, poolSize))
+	group, ctx := NewGroupWithSharedPool[Result](ctx, make(Pool, poolSize))
+	group.dedicatedPool = true
+	return group, ctx
 }
 
+// NewGroupWithSharedPool creates a new Group that shares the provided pool.
+//
+// Result is the type of the results returned by the tasks in the group.
 func NewGroupWithSharedPool[Result any](ctx context.Context, sharedPool Pool) (*Group[Result], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
 	return &Group[Result]{
-		pool:      sharedPool,
-		ctx:       ctxWithCancel,
-		cancel:    cancel,
-		completed: make(chan ticket),
+		pool:   sharedPool,
+		ctx:    ctxWithCancel,
+		cancel: cancel,
+		done:   make(chan struct{}),
 	}, ctxWithCancel
 }
 
+// Go starts a concurrent task in the group if a slot in the pool is
+// available, or blocks until a slot becomes available.
+//
+// It returns an error if the group has already been completed or if the context is done.
 func (g *Group[Result]) Go(task func() (Result, error)) error {
 	select {
 	case <-g.ctx.Done():
@@ -66,10 +79,10 @@ func (g *Group[Result]) Go(task func() (Result, error)) error {
 			return cause
 		}
 		return g.ctx.Err()
-	case <-g.completed:
+	case <-g.done:
 		// group has been completed, no more tasks can be submitted
 		return errors.New("group has already been completed")
-	case g.pool <- ticket{}:
+	case g.pool <- slot{}:
 		// acquired a slot in the pool
 	}
 
@@ -97,9 +110,10 @@ func (g *Group[Result]) Go(task func() (Result, error)) error {
 	return nil
 }
 
+// Wait blocks until all tasks in the group have completed.
 func (g *Group[Result]) Wait() ([]Result, error) {
 	if !g.waitOnce() {
-		return nil, errors.New("Wait() can only be called once on SimpleGroup")
+		return nil, errors.New("Wait() can only be called once")
 	}
 
 	defer func() {
@@ -111,18 +125,18 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 	// convert g.wg.Wait() to a channel to avoid blocking
 	go func() {
 		g.wg.Wait()
-		close(g.completed)
+		close(g.done)
 	}()
 
 	select {
-	case <-g.completed:
+	case <-g.done:
 		// all tasks completed normally
 	case <-g.ctx.Done():
 		// context was cancelled, then wait for cleanup
-		<-g.completed
+		<-g.done
 	}
 
-	if cause := context.Cause(g.ctx); cause != nil && cause != context.Canceled {
+	if cause := context.Cause(g.ctx); cause != nil {
 		return g.results, cause
 	}
 	if g.ctx.Err() != nil {

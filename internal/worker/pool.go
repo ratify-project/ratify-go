@@ -15,8 +15,8 @@ limitations under the License.
 
 package worker
 
-type ticket struct{}
+type slot struct{}
 
 // Pool is a channel-based semaphore that limits the
 // number of concurrent tasks.
-type Pool chan ticket
+type Pool chan slot
