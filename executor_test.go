@@ -131,7 +131,6 @@ type mockEvaluator struct {
 	returnAddResultErr   bool
 	returnCommitErr      bool
 	verifierPrunedDigest string
-	artifactPrunedDigest string
 	subjectPrunedDigest  string
 }
 

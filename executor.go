@@ -231,12 +231,11 @@ func (e *Executor) verifySubjectAgainstReferrers(parentCtx context.Context, task
 					return nil, err
 				}
 
-				artifactReport := &ValidationReport{
+				return &ValidationReport{
 					Subject:  artifact,
 					Results:  results,
 					Artifact: referrer,
-				}
-				return artifactReport, nil
+				}, nil
 			})
 		}
 		return nil
@@ -259,13 +258,15 @@ func (e *Executor) verifySubjectAgainstReferrers(parentCtx context.Context, task
 			return nil, fmt.Errorf("failed to commit the artifact %s: %w", artifact, err)
 		}
 	}
-	var newTasks []*executorTask
-	if !isSubjectPruned {
-		// start processing next level of referrers
-		for _, artifactReport := range artifactReports {
-			if artifactReport == nil {
-				continue
-			}
+	newTasks := make([]*executorTask, 0, len(artifactReports))
+	// start processing next level of referrers
+	for _, artifactReport := range artifactReports {
+		if artifactReport == nil {
+			continue
+		}
+		task.subjectReport.ArtifactReports = append(task.subjectReport.ArtifactReports, artifactReport)
+
+		if !isSubjectPruned {
 			referrerArtifact := task.artifact
 			referrerArtifact.Reference = artifactReport.Artifact.Digest.String()
 			newTasks = append(newTasks, &executorTask{
@@ -273,7 +274,6 @@ func (e *Executor) verifySubjectAgainstReferrers(parentCtx context.Context, task
 				artifactDesc:  artifactReport.Artifact,
 				subjectReport: artifactReport,
 			})
-			task.subjectReport.ArtifactReports = append(task.subjectReport.ArtifactReports, artifactReport)
 		}
 	}
 	return newTasks, nil
@@ -328,7 +328,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 		})
 	}
 	verificationResults, err := verifierTaskGroup.Wait()
-	if err != nil {
+	if err != nil && err != errSubjectPruned {
 		return nil, err
 	}
 	// Filter out nil results and return the verification results.
@@ -338,7 +338,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			results = append(results, result)
 		}
 	}
-	return results, nil
+	return results, err
 }
 
 func (e *Executor) resolveSubject(ctx context.Context, subject string) (registry.Reference, ocispec.Descriptor, error) {

@@ -25,30 +25,34 @@ import (
 // Group is a much simpler version that uses sync.WaitGroup
 // and eliminates most of the complexity while keeping the same interface
 type Group[Result any] struct {
-	isDedicatedPool bool
-	pool            Pool
-	ctx             context.Context
-	cancel          context.CancelCauseFunc
+	// ctx is the context for the group, which can be cancelled
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+
+	// Pool is a channel that limits the number of concurrent tasks
+	pool          Pool
+	dedicatedPool bool
 
 	completed chan ticket
 	wg        sync.WaitGroup
 	errOnce   sync.Once
 
-	hasWaited atomic.Bool
-
 	// results stores the results of completed tasks
 	results   []Result
 	resultsMu sync.Mutex
+
+	// hasWaited is used to ensure Wait() can only be called once
+	hasWaited atomic.Bool
 }
 
 func NewGroup[Result any](ctx context.Context, poolSize int) (*Group[Result], context.Context) {
 	ctxWithCancel, cancel := context.WithCancelCause(ctx)
 	return &Group[Result]{
-		pool:            make(Pool, poolSize),
-		isDedicatedPool: true,
-		ctx:             ctxWithCancel,
-		cancel:          cancel,
-		completed:       make(chan ticket),
+		pool:          make(Pool, poolSize),
+		dedicatedPool: true,
+		ctx:           ctxWithCancel,
+		cancel:        cancel,
+		completed:     make(chan ticket),
 	}, ctxWithCancel
 }
 
@@ -106,7 +110,7 @@ func (g *Group[Result]) Wait() ([]Result, error) {
 	}
 
 	defer func() {
-		if g.isDedicatedPool {
+		if g.dedicatedPool {
 			close(g.pool)
 		}
 	}()
