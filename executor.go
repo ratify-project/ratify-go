@@ -163,7 +163,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 	taskQueue := []*executorTask{rootTask}
 	for len(taskQueue) > 0 {
-		artifactTaskGroup, ctx := worker.NewGroup[[]*executorTask](ctx, e.ConcurrencyLimit)
+		workerGroup, ctx := worker.NewGroup[[]*executorTask](ctx, e.ConcurrencyLimit)
 
 		// prepare batch of tasks to process
 		currentBatch := taskQueue
@@ -171,19 +171,17 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 		// start batch processing
 		for _, task := range currentBatch {
-			artifactTaskGroup.Go(func() ([]*executorTask, error) {
+			workerGroup.Go(func() ([]*executorTask, error) {
 				return e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes, evaluator, referrerTaskPool, verifierTaskPool)
 			})
 		}
 
 		// wait for new tasks and add them to the task queue
-		allNewTasks, err := artifactTaskGroup.Wait()
+		allNewTasks, err := workerGroup.Wait()
 		if err != nil {
 			return nil, nil, err
 		}
-		for _, newTasks := range allNewTasks {
-			taskQueue = append(taskQueue, newTasks...)
-		}
+		taskQueue = slices.Concat(allNewTasks...)
 	}
 
 	return rootTask.subjectReport.ArtifactReports, evaluator, nil
@@ -192,15 +190,15 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
 func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, referrerTaskPool, verifierTaskPool worker.Pool) ([]*executorTask, error) {
+	workerGroup, ctx := worker.NewGroupWithSharedPool[*ValidationReport](ctx, referrerTaskPool)
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.
 	// artifactReports is used to store the validation reports of those
 	// referrer artifacts.
-	taskGroup, ctx := worker.NewGroupWithSharedPool[*ValidationReport](ctx, referrerTaskPool)
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for _, referrer := range referrers {
-			taskGroup.Go(func() (*ValidationReport, error) {
+			workerGroup.Go(func() (*ValidationReport, error) {
 				results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator, verifierTaskPool)
 				if err != nil {
 					if errors.Is(err, errSubjectPruned) && len(results) > 0 {
@@ -231,7 +229,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	}
 
 	isSubjectPruned := false
-	artifactReports, err := taskGroup.Wait()
+	artifactReports, err := workerGroup.Wait()
 	if err != nil {
 		if err != errSubjectPruned {
 			return nil, fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
@@ -270,13 +268,13 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
 func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator, verifierTaskPool worker.Pool) ([]*VerificationResult, error) {
-	taskGroup, ctx := worker.NewGroupWithSharedPool[*VerificationResult](ctx, verifierTaskPool)
+	workerGroup, ctx := worker.NewGroupWithSharedPool[*VerificationResult](ctx, verifierTaskPool)
 	for _, verifier := range e.Verifiers {
 		if !verifier.Verifiable(artifact) {
 			continue
 		}
 
-		taskGroup.Go(func() (*VerificationResult, error) {
+		workerGroup.Go(func() (*VerificationResult, error) {
 			if evaluator != nil {
 				prunedState, err := evaluator.Pruned(ctx, subjectDesc.Digest.String(), artifact.Digest.String(), verifier.Name())
 				if err != nil {
@@ -315,7 +313,7 @@ func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc,
 			return verifierReport, nil
 		})
 	}
-	verificationResults, err := taskGroup.Wait()
+	verificationResults, err := workerGroup.Wait()
 	if err != nil && err != errSubjectPruned {
 		return nil, err
 	}
