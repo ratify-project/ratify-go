@@ -906,34 +906,45 @@ func sameVerifierReport(report1, report2 *VerificationResult) bool {
 
 func TestValidateExecutorSetup(t *testing.T) {
 	tests := []struct {
-		name      string
-		store     Store
-		verifiers []Verifier
-		wantErr   bool
+		name             string
+		store            Store
+		verifiers        []Verifier
+		concurrencyLimit int
+		wantErr          bool
 	}{
 		{
-			name:      "Store is not set",
-			store:     nil,
-			verifiers: []Verifier{&mockVerifier{}},
-			wantErr:   true,
+			name:             "Store is not set",
+			store:            nil,
+			verifiers:        []Verifier{&mockVerifier{}},
+			concurrencyLimit: 1,
+			wantErr:          true,
 		},
 		{
-			name:      "Verifiers are not set",
-			store:     &mockStore{},
-			verifiers: nil,
-			wantErr:   true,
+			name:             "Verifiers are not set",
+			store:            &mockStore{},
+			verifiers:        nil,
+			concurrencyLimit: 1,
+			wantErr:          true,
 		},
 		{
-			name:      "All components are set",
-			store:     &mockStore{},
-			verifiers: []Verifier{&mockVerifier{}},
-			wantErr:   false,
+			name:             "concurrency liimit is zero",
+			store:            &mockStore{},
+			verifiers:        []Verifier{&mockVerifier{}},
+			concurrencyLimit: 0,
+			wantErr:          true,
+		},
+		{
+			name:             "All components are set",
+			store:            &mockStore{},
+			verifiers:        []Verifier{&mockVerifier{}},
+			concurrencyLimit: 1,
+			wantErr:          false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateExecutorSetup(tt.store, tt.verifiers)
+			err := validateExecutorSetup(tt.store, tt.verifiers, tt.concurrencyLimit)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateExecutorSetup() error = %v, wantErr %v", err, tt.wantErr)
 			}
