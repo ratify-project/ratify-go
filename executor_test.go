@@ -906,45 +906,45 @@ func sameVerifierReport(report1, report2 *VerificationResult) bool {
 
 func TestValidateExecutorSetup(t *testing.T) {
 	tests := []struct {
-		name             string
-		store            Store
-		verifiers        []Verifier
-		concurrencyLimit int
-		wantErr          bool
+		name       string
+		store      Store
+		verifiers  []Verifier
+		maxWorkers int
+		wantErr    bool
 	}{
 		{
-			name:             "Store is not set",
-			store:            nil,
-			verifiers:        []Verifier{&mockVerifier{}},
-			concurrencyLimit: 1,
-			wantErr:          true,
+			name:       "Store is not set",
+			store:      nil,
+			verifiers:  []Verifier{&mockVerifier{}},
+			maxWorkers: 1,
+			wantErr:    true,
 		},
 		{
-			name:             "Verifiers are not set",
-			store:            &mockStore{},
-			verifiers:        nil,
-			concurrencyLimit: 1,
-			wantErr:          true,
+			name:       "Verifiers are not set",
+			store:      &mockStore{},
+			verifiers:  nil,
+			maxWorkers: 1,
+			wantErr:    true,
 		},
 		{
-			name:             "concurrency limit is zero",
-			store:            &mockStore{},
-			verifiers:        []Verifier{&mockVerifier{}},
-			concurrencyLimit: 0,
-			wantErr:          true,
+			name:       "concurrency limit is zero",
+			store:      &mockStore{},
+			verifiers:  []Verifier{&mockVerifier{}},
+			maxWorkers: 0,
+			wantErr:    true,
 		},
 		{
-			name:             "All components are set",
-			store:            &mockStore{},
-			verifiers:        []Verifier{&mockVerifier{}},
-			concurrencyLimit: 1,
-			wantErr:          false,
+			name:       "All components are set",
+			store:      &mockStore{},
+			verifiers:  []Verifier{&mockVerifier{}},
+			maxWorkers: 1,
+			wantErr:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateExecutorSetup(tt.store, tt.verifiers, tt.concurrencyLimit)
+			err := validateExecutorSetup(tt.store, tt.verifiers, tt.maxWorkers)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateExecutorSetup() error = %v, wantErr %v", err, tt.wantErr)
 			}

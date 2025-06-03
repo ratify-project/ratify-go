@@ -72,32 +72,35 @@ type Executor struct {
 	// Optional.
 	PolicyEnforcer PolicyEnforcer
 
-	// ConcurrencyLimit is the maximum number of concurrent tasks that can be
-	// executed.
+	// MaxWorkers is the maximum number of concurrent workers that can be used
+	// to validate artifacts. This limit is used to create worker pools.
 	//
-	// note: each call to ValidateArtifact will create new worker pools based on this
-	// limit.
-	ConcurrencyLimit int
+	// note: each call to Executor.ValidateArtifact will create new worker pools
+	// based on MaxWorkers.
+	MaxWorkers int
 }
 
 // NewExecutor creates a new executor with the given verifiers, store, and
 // policy enforcer.
-func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer, concurrencyLimit int) (*Executor, error) {
-	if err := validateExecutorSetup(store, verifiers, concurrencyLimit); err != nil {
+//
+// maxWorkers is the maximum number of concurrent workers that can be
+// executed. It must be greater or equal to 1.
+func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer, maxWorkers int) (*Executor, error) {
+	if err := validateExecutorSetup(store, verifiers, maxWorkers); err != nil {
 		return nil, err
 	}
 
 	return &Executor{
-		Store:            store,
-		Verifiers:        verifiers,
-		PolicyEnforcer:   policyEnforcer,
-		ConcurrencyLimit: concurrencyLimit,
+		Store:          store,
+		Verifiers:      verifiers,
+		PolicyEnforcer: policyEnforcer,
+		MaxWorkers:     maxWorkers,
 	}, nil
 }
 
 // ValidateArtifact returns the result of verifying an artifact.
 func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOptions) (*ValidationResult, error) {
-	if err := validateExecutorSetup(e.Store, e.Verifiers, e.ConcurrencyLimit); err != nil {
+	if err := validateExecutorSetup(e.Store, e.Verifiers, e.MaxWorkers); err != nil {
 		return nil, err
 	}
 
@@ -142,9 +145,9 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 
 	// create worker pools for referrer and verifier tasks
-	referrerPoolSlots := make(worker.PoolSlots, e.ConcurrencyLimit)
+	referrerPoolSlots := make(worker.PoolSlots, e.MaxWorkers)
 	defer close(referrerPoolSlots)
-	verifierPoolSlots := make(worker.PoolSlots, e.ConcurrencyLimit)
+	verifierPoolSlots := make(worker.PoolSlots, e.MaxWorkers)
 	defer close(verifierPoolSlots)
 
 	rootTask := &executorTask{
@@ -156,7 +159,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 	taskQueue := []*executorTask{rootTask}
 	for len(taskQueue) > 0 {
-		pool, ctx := worker.NewPool[[]*executorTask](ctx, e.ConcurrencyLimit)
+		pool, ctx := worker.NewPool[[]*executorTask](ctx, e.MaxWorkers)
 
 		// prepare batch of tasks to process
 		currentBatch := taskQueue
@@ -361,15 +364,15 @@ type executorTask struct {
 	subjectReport *ValidationReport
 }
 
-func validateExecutorSetup(store Store, verifiers []Verifier, concurrencyLimit int) error {
+func validateExecutorSetup(store Store, verifiers []Verifier, maxWorkers int) error {
 	if store == nil {
 		return fmt.Errorf("store must be configured")
 	}
 	if len(verifiers) == 0 {
 		return fmt.Errorf("at least one verifier must be configured")
 	}
-	if concurrencyLimit <= 0 {
-		return fmt.Errorf("concurrency limit (%d) must be greater than 0", concurrencyLimit)
+	if maxWorkers <= 0 {
+		return fmt.Errorf("max workers (%d) must be greater than 0", maxWorkers)
 	}
 	return nil
 }
