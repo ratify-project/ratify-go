@@ -22,6 +22,8 @@ import (
 	"sync/atomic"
 )
 
+var poolCompletedError = errors.New("pool has already been completed")
+
 type slot struct{}
 
 // PoolSlots is a channel-based semaphore that limits the
@@ -82,6 +84,7 @@ func NewSharedPool[Result any](ctx context.Context, sharedSlots PoolSlots) (*Poo
 //
 // It returns an error if the pool has already been completed or if the context is done.
 func (p *Pool[Result]) Go(task func() (Result, error)) error {
+	// check completion first
 	select {
 	case <-p.ctx.Done():
 		if cause := context.Cause(p.ctx); cause != nil && cause != context.Canceled {
@@ -89,7 +92,18 @@ func (p *Pool[Result]) Go(task func() (Result, error)) error {
 		}
 		return p.ctx.Err()
 	case <-p.done:
-		return errors.New("pool has already been completed")
+		return poolCompletedError
+	default:
+	}
+
+	select {
+	case <-p.ctx.Done():
+		if cause := context.Cause(p.ctx); cause != nil && cause != context.Canceled {
+			return cause
+		}
+		return p.ctx.Err()
+	case <-p.done:
+		return poolCompletedError
 	case p.poolSlots <- slot{}:
 		// acquired a slot in the pool
 	}

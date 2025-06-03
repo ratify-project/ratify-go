@@ -212,3 +212,41 @@ func TestPool_MultiplePanics(t *testing.T) {
 	_, _ = pool.Wait()
 	t.Fatal("Wait() should have panicked but returned normally")
 }
+
+func TestPool_GoAfterWait(t *testing.T) {
+	poolSlots := make(PoolSlots, 2)
+
+	ctx := context.Background()
+	pool, _ := NewSharedPool[int](ctx, poolSlots)
+
+	// Add a task to the pool
+	err := pool.Go(func() (int, error) {
+		return 42, nil
+	})
+	if err != nil {
+		t.Fatalf("failed to submit task: %v", err)
+	}
+
+	// Wait for all tasks to complete
+	results, err := pool.Wait()
+	if err != nil {
+		t.Fatalf("Wait() failed: %v", err)
+	}
+
+	if len(results) != 1 || results[0] != 42 {
+		t.Fatalf("expected [42], got %v", results)
+	}
+
+	// Try to add another task after Wait() has been called
+	err = pool.Go(func() (int, error) {
+		return 100, nil
+	})
+	if err == nil {
+		t.Fatal("expected error when calling Go() after Wait(), got nil")
+	}
+
+	expectedErrMsg := "pool has already been completed"
+	if err.Error() != expectedErrMsg {
+		t.Fatalf("expected error message %q, got %q", expectedErrMsg, err.Error())
+	}
+}
