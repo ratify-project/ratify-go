@@ -174,8 +174,8 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 			if err := workerPool.Go(func() ([]*executorTask, error) {
 				return e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes, evaluator, referrerPoolSlots, verifierPoolSlots)
 			}); err != nil {
-				_, _ = workerPool.Wait()
-				return nil, nil, err
+				// error will be handled by Wait()
+				break
 			}
 		}
 
@@ -230,8 +230,11 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 		return nil
 	})
 	if err != nil && !errors.Is(err, errSubjectPruned) {
-		_, _ = workerPool.Wait()
-		return nil, fmt.Errorf("failed to list referrers artifact %s: %w", artifact, err)
+		_, workerError := workerPool.Wait()
+		if workerError != nil {
+			return nil, fmt.Errorf("failed to list referrers for artifact %s: %w", artifact, workerError)
+		}
+		return nil, fmt.Errorf("failed to list referrers for artifact %s: %w", artifact, err)
 	}
 
 	isSubjectPruned := false
@@ -243,7 +246,8 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 		isSubjectPruned = true
 	}
 
-	newTasks := make([]*executorTask, 0, len(referrerReports))
+	// process reports
+	var newTasks []*executorTask
 	for _, referrerReport := range referrerReports {
 		if referrerReport == nil {
 			continue
