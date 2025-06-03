@@ -133,9 +133,9 @@ type evaluationNode struct {
 	// by rule ID.
 	childNodes map[int][]*evaluationNode
 
-	// commited indicates whether more child (virtual) nodes will be added to
+	// committed indicates whether more child (virtual) nodes will be added to
 	// this node. If set to true, no more child nodes will be added to it.
-	commited bool
+	committed bool
 }
 
 func (n *evaluationNode) addChildNode(rule *ThresholdPolicyRule, artifactDigest string) *evaluationNode {
@@ -219,7 +219,7 @@ func (n *evaluationNode) calculateDecision() thresholdPolicyDecision {
 	}
 	if successfulRuleCount >= threshold {
 		n.ruleDecision = thresholdPolicyDecisionAllow
-	} else if n.commited && undeterminedRuleCount == 0 {
+	} else if n.committed && undeterminedRuleCount == 0 {
 		n.ruleDecision = thresholdPolicyDecisionDeny
 	}
 	return n.ruleDecision
@@ -412,7 +412,7 @@ func (e *thresholdEvaluator) Commit(ctx context.Context, subjectDigest string) e
 	defer e.mu.Unlock()
 
 	for _, node := range e.subjectIndex[subjectDigest] {
-		node.commited = true
+		node.committed = true
 		node.refreshDecision()
 	}
 	return nil
