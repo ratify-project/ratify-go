@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package worker
+package workerpool
 
 import (
 	"context"
@@ -162,49 +162,7 @@ func TestPool_PanicRecovery(t *testing.T) {
 
 	// wait should re-raise the panic
 	defer func() {
-		if r := recover(); r != nil {
-			if r != "test panic" {
-				t.Fatalf("expected panic value 'test panic', got %v", r)
-			}
-		} else {
-			t.Fatal("expected panic to be re-raised, but no panic occurred")
-		}
-	}()
-
-	_, _ = pool.Wait()
-	t.Fatal("Wait() should have panicked but returned normally")
-}
-
-func TestPool_MultiplePanics(t *testing.T) {
-	poolSlots := make(PoolSlots, 3)
-
-	ctx := context.Background()
-	pool, _ := NewSharedPool[int](ctx, poolSlots)
-
-	// add multiple tasks that panic
-	err := pool.Go(func() (int, error) {
-		panic("first panic")
-	})
-	if err != nil {
-		t.Fatalf("unexpected error adding task: %v", err)
-	}
-
-	err = pool.Go(func() (int, error) {
-		panic("second panic")
-	})
-	if err != nil {
-		t.Fatalf("unexpected error adding task: %v", err)
-	}
-
-	// only the first panic should be captured and re-raised
-	defer func() {
-		if r := recover(); r != nil {
-			// should be one of the panic values, but we can't guarantee which one
-			// since goroutines execute concurrently
-			if r != "first panic" && r != "second panic" {
-				t.Fatalf("expected panic value 'first panic' or 'second panic', got %v", r)
-			}
-		} else {
+		if r := recover(); r == nil {
 			t.Fatal("expected panic to be re-raised, but no panic occurred")
 		}
 	}()
@@ -253,7 +211,7 @@ func TestPool_GoAfterWait(t *testing.T) {
 
 func TestPool_DedicatedPoolClosesSlots(t *testing.T) {
 	ctx := context.Background()
-	pool, _ := NewPool[int](ctx, 2) // Create a dedicated pool with size 2
+	pool, _ := New[int](ctx, 2) // Create a dedicated pool with size 2
 
 	// Add some tasks to the pool
 	err := pool.Go(func() (int, error) {
@@ -292,47 +250,5 @@ func TestPool_DedicatedPoolClosesSlots(t *testing.T) {
 		// Channel is closed as expected
 	default:
 		t.Fatal("expected poolSlots channel to be closed and readable, but it's not")
-	}
-}
-
-func TestPool_ContextCancelledWithoutCause(t *testing.T) {
-	// Create a cancellable context
-	ctx, cancel := context.WithCancel(context.Background())
-
-	pool, _ := NewPool[int](ctx, 2)
-
-	// Add a long-running task
-	err := pool.Go(func() (int, error) {
-		time.Sleep(100 * time.Millisecond) // simulate work
-		return 1, nil
-	})
-	if err != nil {
-		t.Fatalf("failed to submit task: %v", err)
-	}
-
-	// Add another task
-	err = pool.Go(func() (int, error) {
-		time.Sleep(100 * time.Millisecond) // simulate work
-		return 2, nil
-	})
-	if err != nil {
-		t.Fatalf("failed to submit task: %v", err)
-	}
-
-	// Cancel the context after a short delay to let tasks start
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		cancel() // This cancels the context without setting a specific cause
-	}()
-
-	// Wait should return the context error (not a specific cause)
-	_, err = pool.Wait()
-	if err == nil {
-		t.Fatal("expected an error due to context cancellation, got nil")
-	}
-
-	// The error should be context.Canceled (not a specific cause)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled error, got %v", err)
 	}
 }

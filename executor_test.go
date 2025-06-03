@@ -927,7 +927,7 @@ func TestValidateExecutorSetup(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name:       "concurrency limit is zero",
+			name:       "maxWorkers is zero",
 			store:      &mockStore{},
 			verifiers:  []Verifier{&mockVerifier{}},
 			maxWorkers: 0,

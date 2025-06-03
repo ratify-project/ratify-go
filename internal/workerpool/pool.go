@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package worker
+package workerpool
 
 import (
 	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/sync/errgroup"
 )
 
 var errPoolCompleted = errors.New("pool has already been completed")
@@ -32,35 +34,26 @@ type PoolSlots chan slot
 
 // Pool is a worker pool that allows concurrent execution of tasks
 type Pool[Result any] struct {
-	// ctx is the context for the pool, which can be cancelled
-	ctx    context.Context
-	cancel context.CancelCauseFunc
+	// eg is the errgroup that manages goroutines and error handling
+	eg  *errgroup.Group
+	ctx context.Context
 
 	// poolSlots is a channel that limits the number of concurrent tasks
 	poolSlots     PoolSlots
 	dedicatedPool bool
 
-	// done is a channel that signals when all tasks are done
-	done    chan struct{}
-	wg      sync.WaitGroup
-	errOnce sync.Once
-
 	// results stores the results of completed tasks
 	results   []Result
 	resultsMu sync.Mutex
-
-	// panic recovery
-	panicValue any
-	panicOnce  sync.Once
 
 	// hasWaited is used to ensure Wait() can only be called once
 	hasWaited atomic.Bool
 }
 
-// NewPool creates a worker pool with provided size.
+// New creates a worker pool with provided size.
 //
 // Result is the type of the results returned by the tasks in the pool.
-func NewPool[Result any](ctx context.Context, size int) (*Pool[Result], context.Context) {
+func New[Result any](ctx context.Context, size int) (*Pool[Result], context.Context) {
 	pool, ctx := NewSharedPool[Result](ctx, make(PoolSlots, size))
 	pool.dedicatedPool = true
 	return pool, ctx
@@ -70,13 +63,12 @@ func NewPool[Result any](ctx context.Context, size int) (*Pool[Result], context.
 //
 // Result is the type of the results returned by the tasks in the pool.
 func NewSharedPool[Result any](ctx context.Context, sharedSlots PoolSlots) (*Pool[Result], context.Context) {
-	ctxWithCancel, cancel := context.WithCancelCause(ctx)
+	eg, egCtx := errgroup.WithContext(ctx)
 	return &Pool[Result]{
 		poolSlots: sharedSlots,
-		ctx:       ctxWithCancel,
-		cancel:    cancel,
-		done:      make(chan struct{}),
-	}, ctxWithCancel
+		eg:        eg,
+		ctx:       egCtx,
+	}, egCtx
 }
 
 // Go starts a concurrent task in the pool if a slot in the pool is
@@ -84,57 +76,46 @@ func NewSharedPool[Result any](ctx context.Context, sharedSlots PoolSlots) (*Poo
 //
 // It returns an error if the pool has already been completed or if the context is done.
 func (p *Pool[Result]) Go(task func() (Result, error)) error {
-	// check completion first
+	// check if Wait() has already been called first
+	if p.hasWaited.Load() {
+		return errPoolCompleted
+	}
+
+	// check completion
 	select {
 	case <-p.ctx.Done():
-		if cause := context.Cause(p.ctx); cause != nil && cause != context.Canceled {
-			return cause
+		if context.Cause(p.ctx) != nil {
+			return context.Cause(p.ctx)
 		}
 		return p.ctx.Err()
-	case <-p.done:
-		return errPoolCompleted
 	default:
 	}
 
 	select {
 	case <-p.ctx.Done():
-		if cause := context.Cause(p.ctx); cause != nil && cause != context.Canceled {
-			return cause
+		if context.Cause(p.ctx) != nil {
+			return context.Cause(p.ctx)
 		}
 		return p.ctx.Err()
-	case <-p.done:
-		return errPoolCompleted
 	case p.poolSlots <- slot{}:
 		// acquired a slot in the pool
 	}
 
-	p.wg.Add(1)
-	go func() {
+	p.eg.Go(func() error {
 		defer func() {
-			if r := recover(); r != nil {
-				// capture the panic and cancel the context
-				p.panicOnce.Do(func() {
-					p.panicValue = r
-					p.cancel(errors.New("goroutine panicked"))
-				})
-			}
 			<-p.poolSlots // release pool slot
-			p.wg.Done()
 		}()
 
 		// execute task
 		result, err := task()
-		if err != nil {
-			p.errOnce.Do(func() {
-				p.cancel(err)
-			})
-		}
 
 		// add result for both success and error cases
 		p.resultsMu.Lock()
 		p.results = append(p.results, result)
 		p.resultsMu.Unlock()
-	}()
+
+		return err
+	})
 
 	return nil
 }
@@ -151,32 +132,9 @@ func (p *Pool[Result]) Wait() ([]Result, error) {
 		}
 	}()
 
-	// convert g.wg.Wait() to a channel to avoid blocking
-	go func() {
-		p.wg.Wait()
-		close(p.done)
-	}()
-
-	select {
-	case <-p.done:
-		// all tasks completed normally
-	case <-p.ctx.Done():
-		// context was cancelled, then wait for cleanup
-		<-p.done
-	}
-
-	// check if a panic occurred and re-raise it
-	if p.panicValue != nil {
-		panic(p.panicValue)
-	}
-
-	if cause := context.Cause(p.ctx); cause != nil {
-		return p.results, cause
-	}
-	if p.ctx.Err() != nil {
-		return p.results, p.ctx.Err()
-	}
-	return p.results, nil
+	// Wait for all goroutines to complete
+	err := p.eg.Wait()
+	return p.results, err
 }
 
 func (p *Pool[Result]) waitOnce() bool {

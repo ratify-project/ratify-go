@@ -22,7 +22,7 @@ import (
 
 	"slices"
 
-	"github.com/notaryproject/ratify-go/internal/worker"
+	"github.com/notaryproject/ratify-go/internal/workerpool"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/registry"
 )
@@ -145,9 +145,9 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 
 	// create worker pools for referrer and verifier tasks
-	referrerPoolSlots := make(worker.PoolSlots, e.MaxWorkers)
+	referrerPoolSlots := make(workerpool.PoolSlots, e.MaxWorkers)
 	defer close(referrerPoolSlots)
-	verifierPoolSlots := make(worker.PoolSlots, e.MaxWorkers)
+	verifierPoolSlots := make(workerpool.PoolSlots, e.MaxWorkers)
 	defer close(verifierPoolSlots)
 
 	rootTask := &executorTask{
@@ -159,7 +159,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 	taskQueue := []*executorTask{rootTask}
 	for len(taskQueue) > 0 {
-		pool, ctx := worker.NewPool[[]*executorTask](ctx, e.MaxWorkers)
+		pool, ctx := workerpool.New[[]*executorTask](ctx, e.MaxWorkers)
 
 		// prepare batch of tasks to process
 		currentBatch := taskQueue
@@ -189,8 +189,8 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
-func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, referrerPoolSlots, verifierPoolSlots worker.PoolSlots) ([]*executorTask, error) {
-	pool, ctx := worker.NewSharedPool[*ValidationReport](ctx, referrerPoolSlots)
+func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, referrerPoolSlots, verifierPoolSlots workerpool.PoolSlots) ([]*executorTask, error) {
+	pool, ctx := workerpool.NewSharedPool[*ValidationReport](ctx, referrerPoolSlots)
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.
@@ -275,8 +275,8 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
-func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator, verifierPoolSlots worker.PoolSlots) ([]*VerificationResult, error) {
-	pool, ctx := worker.NewSharedPool[*VerificationResult](ctx, verifierPoolSlots)
+func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator, verifierPoolSlots workerpool.PoolSlots) ([]*VerificationResult, error) {
+	pool, ctx := workerpool.NewSharedPool[*VerificationResult](ctx, verifierPoolSlots)
 	for i := range e.Verifiers {
 		verifier := e.Verifiers[i]
 		if !verifier.Verifiable(artifact) {
