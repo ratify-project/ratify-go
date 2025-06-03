@@ -250,3 +250,47 @@ func TestPool_GoAfterWait(t *testing.T) {
 		t.Fatalf("expected error message %q, got %q", expectedErrMsg, err.Error())
 	}
 }
+
+func TestPool_DedicatedPoolClosesSlots(t *testing.T) {
+	ctx := context.Background()
+	pool, _ := NewPool[int](ctx, 2) // Create a dedicated pool with size 2
+
+	// Add some tasks to the pool
+	err := pool.Go(func() (int, error) {
+		time.Sleep(10 * time.Millisecond) // simulate some work
+		return 1, nil
+	})
+	if err != nil {
+		t.Fatalf("failed to submit first task: %v", err)
+	}
+
+	err = pool.Go(func() (int, error) {
+		time.Sleep(10 * time.Millisecond) // simulate some work
+		return 2, nil
+	})
+	if err != nil {
+		t.Fatalf("failed to submit second task: %v", err)
+	}
+
+	// Wait for all tasks to complete
+	results, err := pool.Wait()
+	if err != nil {
+		t.Fatalf("Wait() failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	// Verify that the poolSlots channel is closed
+	// Since it's a dedicated pool, the channel should be closed after Wait()
+	select {
+	case _, ok := <-pool.poolSlots:
+		if ok {
+			t.Fatal("expected poolSlots channel to be closed, but it's still open")
+		}
+		// Channel is closed as expected
+	default:
+		t.Fatal("expected poolSlots channel to be closed and readable, but it's not")
+	}
+}
