@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 )
 
-var poolCompletedError = errors.New("pool has already been completed")
+var errPoolCompleted = errors.New("pool has already been completed")
 
 type slot struct{}
 
@@ -92,7 +92,7 @@ func (p *Pool[Result]) Go(task func() (Result, error)) error {
 		}
 		return p.ctx.Err()
 	case <-p.done:
-		return poolCompletedError
+		return errPoolCompleted
 	default:
 	}
 
@@ -103,7 +103,7 @@ func (p *Pool[Result]) Go(task func() (Result, error)) error {
 		}
 		return p.ctx.Err()
 	case <-p.done:
-		return poolCompletedError
+		return errPoolCompleted
 	case p.poolSlots <- slot{}:
 		// acquired a slot in the pool
 	}

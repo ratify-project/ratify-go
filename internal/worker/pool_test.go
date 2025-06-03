@@ -294,3 +294,45 @@ func TestPool_DedicatedPoolClosesSlots(t *testing.T) {
 		t.Fatal("expected poolSlots channel to be closed and readable, but it's not")
 	}
 }
+
+func TestPool_ContextCancelledWithoutCause(t *testing.T) {
+	// Create a cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+
+	pool, _ := NewPool[int](ctx, 2)
+
+	// Add a long-running task
+	err := pool.Go(func() (int, error) {
+		time.Sleep(100 * time.Millisecond) // simulate work
+		return 1, nil
+	})
+	if err != nil {
+		t.Fatalf("failed to submit task: %v", err)
+	}
+
+	// Add another task
+	err = pool.Go(func() (int, error) {
+		time.Sleep(100 * time.Millisecond) // simulate work
+		return 2, nil
+	})
+	if err != nil {
+		t.Fatalf("failed to submit task: %v", err)
+	}
+
+	// Cancel the context after a short delay to let tasks start
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel() // This cancels the context without setting a specific cause
+	}()
+
+	// Wait should return the context error (not a specific cause)
+	_, err = pool.Wait()
+	if err == nil {
+		t.Fatal("expected an error due to context cancellation, got nil")
+	}
+
+	// The error should be context.Canceled (not a specific cause)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled error, got %v", err)
+	}
+}
