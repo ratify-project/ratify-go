@@ -83,12 +83,8 @@ type Executor struct {
 // NewExecutor creates a new executor with the given verifiers, store, and
 // policy enforcer.
 func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforcer, concurrencyLimit int) (*Executor, error) {
-	if err := validateExecutorSetup(store, verifiers); err != nil {
+	if err := validateExecutorSetup(store, verifiers, concurrencyLimit); err != nil {
 		return nil, err
-	}
-
-	if concurrencyLimit <= 0 {
-		return nil, fmt.Errorf("concurrency limit (%d) must be greater than 0", concurrencyLimit)
 	}
 
 	return &Executor{
@@ -101,11 +97,8 @@ func NewExecutor(store Store, verifiers []Verifier, policyEnforcer PolicyEnforce
 
 // ValidateArtifact returns the result of verifying an artifact.
 func (e *Executor) ValidateArtifact(ctx context.Context, opts ValidateArtifactOptions) (*ValidationResult, error) {
-	if err := validateExecutorSetup(e.Store, e.Verifiers); err != nil {
+	if err := validateExecutorSetup(e.Store, e.Verifiers, e.ConcurrencyLimit); err != nil {
 		return nil, err
-	}
-	if e.ConcurrencyLimit <= 0 {
-		return nil, fmt.Errorf("concurrency limit (%d) must be greater than 0", e.ConcurrencyLimit)
 	}
 
 	aggregatedVerifierReports, evaluator, err := e.aggregateVerifierReports(ctx, opts)
@@ -170,7 +163,8 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 		taskQueue = nil
 
 		// start batch processing
-		for _, task := range currentBatch {
+		for i := range currentBatch {
+			task := currentBatch[i]
 			if err := pool.Go(func() ([]*executorTask, error) {
 				return e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes, evaluator, referrerPoolSlots, verifierPoolSlots)
 			}); err != nil {
@@ -200,7 +194,8 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	// artifactReports is used to store the validation reports of those
 	// referrer artifacts.
 	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
-		for _, referrer := range referrers {
+		for i := range referrers {
+			referrer := referrers[i]
 			if err := pool.Go(func() (*ValidationReport, error) {
 				results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator, verifierPoolSlots)
 				if err != nil {
@@ -279,7 +274,8 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 // error if any of the verifier fails.
 func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator, verifierPoolSlots worker.PoolSlots) ([]*VerificationResult, error) {
 	pool, ctx := worker.NewSharedPool[*VerificationResult](ctx, verifierPoolSlots)
-	for _, verifier := range e.Verifiers {
+	for i := range e.Verifiers {
+		verifier := e.Verifiers[i]
 		if !verifier.Verifiable(artifact) {
 			continue
 		}
@@ -365,12 +361,15 @@ type executorTask struct {
 	subjectReport *ValidationReport
 }
 
-func validateExecutorSetup(store Store, verifiers []Verifier) error {
+func validateExecutorSetup(store Store, verifiers []Verifier, concurrencyLimit int) error {
 	if store == nil {
 		return fmt.Errorf("store must be configured")
 	}
 	if len(verifiers) == 0 {
 		return fmt.Errorf("at least one verifier must be configured")
+	}
+	if concurrencyLimit <= 0 {
+		return fmt.Errorf("concurrency limit (%d) must be greater than 0", concurrencyLimit)
 	}
 	return nil
 }
