@@ -172,18 +172,18 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
-func (e *Executor) verifySubjectAgainstReferrers(parentctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskPool *syncutil.TaskPool, referrerPoolSlots, verifierPoolSlots syncutil.PoolSlots) error {
-	pool, ctx := syncutil.NewSharedWorkerPool[*ValidationReport](parentctx, referrerPoolSlots)
+func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskPool *syncutil.TaskPool, referrerPoolSlots, verifierPoolSlots syncutil.PoolSlots) error {
+	pool, poolctx := syncutil.NewSharedWorkerPool[*ValidationReport](ctx, referrerPoolSlots)
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.
 	// artifactReports is used to store the validation reports of those
 	// referrer artifacts.
-	err := e.Store.ListReferrers(ctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
+	err := e.Store.ListReferrers(poolctx, artifact, referenceTypes, func(referrers []ocispec.Descriptor) error {
 		for i := range referrers {
 			referrer := referrers[i]
 			if err := pool.Go(func() (*ValidationReport, error) {
-				results, err := e.verifyArtifact(ctx, repo, task.artifactDesc, referrer, evaluator, verifierPoolSlots)
+				results, err := e.verifyArtifact(poolctx, repo, task.artifactDesc, referrer, evaluator, verifierPoolSlots)
 				if err != nil {
 					if errors.Is(err, errSubjectPruned) && len(results) > 0 {
 						// it is possible that one or some verifiers' reports in the
@@ -228,7 +228,7 @@ func (e *Executor) verifySubjectAgainstReferrers(parentctx context.Context, task
 	}
 
 	if evaluator != nil {
-		if err := evaluator.Commit(ctx, task.artifactDesc.Digest.String()); err != nil {
+		if err := evaluator.Commit(poolctx, task.artifactDesc.Digest.String()); err != nil {
 			return fmt.Errorf("failed to commit the artifact %s: %w", artifact, err)
 		}
 	}
@@ -251,7 +251,7 @@ func (e *Executor) verifySubjectAgainstReferrers(parentctx context.Context, task
 				subjectReport: referrerReport,
 			}
 			artifactTaskPool.Submit(func() error {
-				return e.verifySubjectAgainstReferrers(parentctx, newTask, repo, referenceTypes, evaluator, artifactTaskPool, referrerPoolSlots, verifierPoolSlots)
+				return e.verifySubjectAgainstReferrers(ctx, newTask, repo, referenceTypes, evaluator, artifactTaskPool, referrerPoolSlots, verifierPoolSlots)
 			})
 		}
 	}
