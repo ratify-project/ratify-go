@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workerpool
+package syncutil
 
 import (
 	"context"
@@ -22,11 +22,11 @@ import (
 	"time"
 )
 
-func TestPool_Basic(t *testing.T) {
+func TestWorkerPool_Basic(t *testing.T) {
 	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	pool, _ := NewSharedPool[int](ctx, poolSlots)
+	pool, _ := NewSharedWorkerPool[int](ctx, poolSlots)
 
 	// test empty group
 	results, err := pool.Wait()
@@ -38,11 +38,11 @@ func TestPool_Basic(t *testing.T) {
 	}
 }
 
-func TestPool_SingleTask(t *testing.T) {
+func TestWorkerPool_SingleTask(t *testing.T) {
 	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	pool, _ := NewSharedPool[int](ctx, poolSlots)
+	pool, _ := NewSharedWorkerPool[int](ctx, poolSlots)
 
 	err := pool.Go(func() (int, error) {
 		return 42, nil
@@ -61,10 +61,10 @@ func TestPool_SingleTask(t *testing.T) {
 	}
 }
 
-func TestPool_MultipleTasks(t *testing.T) {
+func TestWorkerPool_MultipleTasks(t *testing.T) {
 	poolSlots := make(PoolSlots, 3)
 	ctx := context.Background()
-	pool, _ := NewSharedPool[int](ctx, poolSlots)
+	pool, _ := NewSharedWorkerPool[int](ctx, poolSlots)
 
 	for i := 1; i <= 5; i++ {
 		i := i // capture loop variable
@@ -86,11 +86,11 @@ func TestPool_MultipleTasks(t *testing.T) {
 	}
 }
 
-func TestPool_WithError(t *testing.T) {
+func TestWorkerPool_WithError(t *testing.T) {
 	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	pool, _ := NewSharedPool[int](ctx, poolSlots)
+	pool, _ := NewSharedWorkerPool[int](ctx, poolSlots)
 
 	expectedErr := errors.New("task error")
 
@@ -119,11 +119,11 @@ func TestPool_WithError(t *testing.T) {
 	}
 }
 
-func TestPool_WaitCalledTwice(t *testing.T) {
+func TestWorkerPool_WaitCalledTwice(t *testing.T) {
 	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	pool, _ := NewSharedPool[int](ctx, poolSlots)
+	pool, _ := NewSharedWorkerPool[int](ctx, poolSlots)
 
 	// first call should succeed
 	_, err := pool.Wait()
@@ -138,11 +138,11 @@ func TestPool_WaitCalledTwice(t *testing.T) {
 	}
 }
 
-func TestPool_PanicRecovery(t *testing.T) {
+func TestWorkerPool_PanicRecovery(t *testing.T) {
 	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	pool, _ := NewSharedPool[int](ctx, poolSlots)
+	pool, _ := NewSharedWorkerPool[int](ctx, poolSlots)
 
 	// add a task that panics
 	err := pool.Go(func() (int, error) {
@@ -171,11 +171,11 @@ func TestPool_PanicRecovery(t *testing.T) {
 	t.Fatal("Wait() should have panicked but returned normally")
 }
 
-func TestPool_GoAfterWait(t *testing.T) {
+func TestWorkerPool_GoAfterWait(t *testing.T) {
 	poolSlots := make(PoolSlots, 2)
 
 	ctx := context.Background()
-	pool, _ := NewSharedPool[int](ctx, poolSlots)
+	pool, _ := NewSharedWorkerPool[int](ctx, poolSlots)
 
 	// Add a task to the pool
 	err := pool.Go(func() (int, error) {
@@ -209,9 +209,9 @@ func TestPool_GoAfterWait(t *testing.T) {
 	}
 }
 
-func TestPool_DedicatedPoolClosesSlots(t *testing.T) {
+func TestWorkerPool_DedicatedPoolClosesSlots(t *testing.T) {
 	ctx := context.Background()
-	pool, _ := New[int](ctx, 2) // Create a dedicated pool with size 2
+	pool, _ := NewWorkerPool[int](ctx, 2) // Create a dedicated pool with size 2
 
 	// Add some tasks to the pool
 	err := pool.Go(func() (int, error) {

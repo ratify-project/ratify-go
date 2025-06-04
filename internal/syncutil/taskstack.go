@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package task
+package syncutil
 
 import (
 	"sync"
@@ -21,27 +21,35 @@ import (
 	"github.com/notaryproject/ratify-go/internal/stack"
 )
 
-// TaskStack is a stack-based task queue that allows tasks to be pushed onto a stack
+// taskStack is a stack-based task queue that allows tasks to be pushed onto a stack
 // and then popped through a channel.
-type TaskStack[Task any] struct {
+type taskStack[Task any] struct {
 	mu    sync.Mutex
 	ch    chan Task
 	stack stack.Stack[Task]
 
 	// drainingOnce is used to ensure that the drainStack goroutine is started only once
-	drainingOnce sync.Once
+	drainingOnce    sync.Once
+	waitingDraining sync.WaitGroup
+
+	closed bool
 }
 
 // NewTaskStack creates a new TaskStack with the specified channel buffer size.
-func NewTaskStack[Task any](bufferSize int) *TaskStack[Task] {
-	return &TaskStack[Task]{
+func NewTaskStack[Task any](bufferSize int) *taskStack[Task] {
+	return &taskStack[Task]{
 		ch: make(chan Task, bufferSize),
 	}
 }
 
-func (s *TaskStack[Task]) Push(task Task) {
+// Push adds a task to the stack.
+func (s *taskStack[Task]) Push(task Task) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if s.closed {
+		return
+	}
 
 	s.stack.Push(task)
 
@@ -51,10 +59,12 @@ func (s *TaskStack[Task]) Push(task Task) {
 }
 
 // drainStack continuously moves tasks from the stack to the channel
-func (s *TaskStack[Task]) drainStack() {
+func (s *taskStack[Task]) drainStack() {
+	s.waitingDraining.Add(1)
+	defer s.waitingDraining.Done()
 	for {
 		s.mu.Lock()
-		if s.stack.Len() == 0 {
+		if s.stack.Len() == 0 || s.closed {
 			// reset to allow future pushes to restart draining
 			s.drainingOnce = sync.Once{}
 			s.mu.Unlock()
@@ -68,7 +78,21 @@ func (s *TaskStack[Task]) drainStack() {
 	}
 }
 
-// PopChannel returns a channel that can be used to receive tasks from the stack.
-func (s *TaskStack[Task]) PopChannel() <-chan Task {
+// Channel returns a channel that can be used to receive tasks from the stack.
+func (s *taskStack[Task]) Channel() <-chan Task {
 	return s.ch
+}
+
+// Close closes the channel and stops the draining goroutine.
+func (s *taskStack[Task]) Close() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+
+	if len(s.ch) == cap(s.ch) {
+		// unblock the drainStack goroutine to finish processing the last task
+		<-s.ch
+	}
+	s.waitingDraining.Wait()
+	close(s.ch)
 }

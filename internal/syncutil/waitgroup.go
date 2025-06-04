@@ -13,19 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package task
+package syncutil
 
 import "sync"
 
-type WaitGroup struct {
+// waitGroup is a wrapper around sync.WaitGroup that provides a channel
+// to signal when all tasks are complete.
+type waitGroup struct {
 	sync.WaitGroup
 
-	// doneOnce is used to ensure that the DoneChannel is closed only once
 	doneOnce sync.Once
 	done     chan struct{}
 }
 
-func (wg *WaitGroup) Complete() <-chan struct{} {
+// Complete returns a channel that will be closed when all tasks in the wait group are complete.
+func (wg *waitGroup) Complete() <-chan struct{} {
 	if wg.done == nil {
 		wg.done = make(chan struct{})
 	}

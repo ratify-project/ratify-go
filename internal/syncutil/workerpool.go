@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package workerpool
+package syncutil
 
 import (
 	"context"
@@ -29,14 +29,14 @@ var errPoolCompleted = errors.New("pool has already been completed")
 type slot struct{}
 
 // PoolSlots is a channel-based semaphore that limits the
-// number of concurrent task in a [Pool].
+// number of concurrent task in a [WorkerPool].
 type PoolSlots chan slot
 
-// Pool is a worker pool that allows concurrent execution of tasks
-type Pool[Result any] struct {
+// WorkerPool is a worker pool that allows concurrent execution of tasks
+type WorkerPool[Result any] struct {
 	// eg is the errgroup that manages goroutines and error handling
-	eg  *errgroup.Group
-	ctx context.Context
+	eg    *errgroup.Group
+	egctx context.Context
 
 	// poolSlots is a channel that limits the number of concurrent tasks
 	poolSlots     PoolSlots
@@ -50,24 +50,24 @@ type Pool[Result any] struct {
 	hasWaited atomic.Bool
 }
 
-// New creates a worker pool with provided size.
+// NewWorkerPool creates a worker pool with provided size.
 //
 // Result is the type of the results returned by the tasks in the pool.
-func New[Result any](ctx context.Context, size int) (*Pool[Result], context.Context) {
-	pool, ctx := NewSharedPool[Result](ctx, make(PoolSlots, size))
+func NewWorkerPool[Result any](ctx context.Context, size int) (*WorkerPool[Result], context.Context) {
+	pool, ctx := NewSharedWorkerPool[Result](ctx, make(PoolSlots, size))
 	pool.dedicatedPool = true
 	return pool, ctx
 }
 
-// NewSharedPool creates a worker pool that shares the provided pool slots.
+// NewSharedWorkerPool creates a worker pool that shares the provided pool slots.
 //
 // Result is the type of the results returned by the tasks in the pool.
-func NewSharedPool[Result any](ctx context.Context, sharedSlots PoolSlots) (*Pool[Result], context.Context) {
+func NewSharedWorkerPool[Result any](ctx context.Context, sharedSlots PoolSlots) (*WorkerPool[Result], context.Context) {
 	eg, egCtx := errgroup.WithContext(ctx)
-	return &Pool[Result]{
+	return &WorkerPool[Result]{
 		poolSlots: sharedSlots,
 		eg:        eg,
-		ctx:       egCtx,
+		egctx:     egCtx,
 	}, egCtx
 }
 
@@ -75,7 +75,7 @@ func NewSharedPool[Result any](ctx context.Context, sharedSlots PoolSlots) (*Poo
 // available, or blocks until a slot becomes available.
 //
 // It returns an error if the pool has already been completed or if the context is done.
-func (p *Pool[Result]) Go(task func() (Result, error)) error {
+func (p *WorkerPool[Result]) Go(task func() (Result, error)) error {
 	// check if Wait() has already been called first
 	if p.hasWaited.Load() {
 		return errPoolCompleted
@@ -83,20 +83,20 @@ func (p *Pool[Result]) Go(task func() (Result, error)) error {
 
 	// check cancellation
 	select {
-	case <-p.ctx.Done():
-		if context.Cause(p.ctx) != nil {
-			return context.Cause(p.ctx)
+	case <-p.egctx.Done():
+		if err := context.Cause(p.egctx); err != nil {
+			return err
 		}
-		return p.ctx.Err()
+		return p.egctx.Err()
 	default:
 	}
 
 	select {
-	case <-p.ctx.Done():
-		if context.Cause(p.ctx) != nil {
-			return context.Cause(p.ctx)
+	case <-p.egctx.Done():
+		if err := context.Cause(p.egctx); err != nil {
+			return err
 		}
-		return p.ctx.Err()
+		return p.egctx.Err()
 	case p.poolSlots <- slot{}:
 		// acquired a slot in the pool
 	}
@@ -121,7 +121,7 @@ func (p *Pool[Result]) Go(task func() (Result, error)) error {
 }
 
 // Wait blocks until all tasks in the pool have completed.
-func (p *Pool[Result]) Wait() ([]Result, error) {
+func (p *WorkerPool[Result]) Wait() ([]Result, error) {
 	if !p.waitOnce() {
 		return nil, errors.New("Wait() can only be called once")
 	}
@@ -137,6 +137,6 @@ func (p *Pool[Result]) Wait() ([]Result, error) {
 	return p.results, err
 }
 
-func (p *Pool[Result]) waitOnce() bool {
+func (p *WorkerPool[Result]) waitOnce() bool {
 	return p.hasWaited.CompareAndSwap(false, true)
 }

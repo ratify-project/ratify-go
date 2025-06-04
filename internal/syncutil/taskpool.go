@@ -13,24 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package task
+package syncutil
 
 import (
 	"context"
-
-	"github.com/notaryproject/ratify-go/internal/workerpool"
 )
 
+// TaskPool is a pool that manages a stack of tasks and executes them concurrently
 type TaskPool struct {
-	wg         WaitGroup
-	tasks      *TaskStack[func() error]
-	workerpool *workerpool.Pool[any]
+	wg         waitGroup
+	tasks      *taskStack[func() error]
+	workerpool *WorkerPool[any]
 }
 
+// NewTaskPool creates a new TaskPool with the specified size.
 func NewTaskPool(ctx context.Context, size int) (*TaskPool, context.Context) {
-	pool, ctx := workerpool.New[any](ctx, size)
+	pool, ctx := NewWorkerPool[any](ctx, size)
 	p := &TaskPool{
-		wg:         WaitGroup{},
+		wg:         waitGroup{},
 		tasks:      NewTaskStack[func() error](size),
 		workerpool: pool,
 	}
@@ -41,16 +41,19 @@ func NewTaskPool(ctx context.Context, size int) (*TaskPool, context.Context) {
 			select {
 			case <-p.wg.Complete():
 				return
-			case task, ok := <-p.tasks.PopChannel():
+			case task, ok := <-p.tasks.Channel():
 				if !ok {
 					return
 				}
-				if err := pool.Go(func() (any, error) {
-					defer p.wg.Done()
+
+				// error will be handled by Wait()
+				// try best to complete all tasks
+				pool.Go(func() (any, error) {
+					defer func() {
+						p.wg.Done()
+					}()
 					return nil, task()
-				}); err != nil {
-					return
-				}
+				})
 			}
 		}
 	}()
@@ -58,14 +61,17 @@ func NewTaskPool(ctx context.Context, size int) (*TaskPool, context.Context) {
 	return p, ctx
 }
 
+// Submit adds a task to the TaskPool for execution.
 func (p *TaskPool) Submit(task func() error) {
 	p.wg.Add(1)
 	p.tasks.Push(task)
 }
 
+// Wait waits for all tasks in the TaskPool to complete and returns any errors encountered during execution.
 func (p *TaskPool) Wait() error {
-	p.wg.Wait()
+	defer p.tasks.Close()
 
+	p.wg.Wait()
 	if _, err := p.workerpool.Wait(); err != nil {
 		return err
 	}

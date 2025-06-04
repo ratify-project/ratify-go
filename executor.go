@@ -22,8 +22,7 @@ import (
 
 	"slices"
 
-	"github.com/notaryproject/ratify-go/internal/task"
-	"github.com/notaryproject/ratify-go/internal/workerpool"
+	"github.com/notaryproject/ratify-go/internal/syncutil"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/registry"
 )
@@ -146,9 +145,9 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 
 	// create worker pools for referrer and verifier tasks
-	referrerPoolSlots := make(workerpool.PoolSlots, e.MaxWorkers)
+	referrerPoolSlots := make(syncutil.PoolSlots, e.MaxWorkers)
 	defer close(referrerPoolSlots)
-	verifierPoolSlots := make(workerpool.PoolSlots, e.MaxWorkers)
+	verifierPoolSlots := make(syncutil.PoolSlots, e.MaxWorkers)
 	defer close(verifierPoolSlots)
 
 	rootTask := &executorTask{
@@ -159,23 +158,9 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 		},
 	}
 
-	taskPool, ctx := task.NewTaskPool(ctx, e.MaxWorkers)
-	var fn func(*executorTask) error
-	fn = func(task *executorTask) error {
-		newTasks, err := e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes, evaluator, referrerPoolSlots, verifierPoolSlots)
-		if err != nil {
-			return err
-		}
-		for i := range newTasks {
-			newTask := newTasks[i]
-			taskPool.Submit(func() error {
-				return fn(newTask)
-			})
-		}
-		return nil
-	}
+	taskPool, ctx := syncutil.NewTaskPool(ctx, e.MaxWorkers)
 	taskPool.Submit(func() error {
-		return fn(rootTask)
+		return e.verifySubjectAgainstReferrers(ctx, rootTask, repo, opts.ReferenceTypes, evaluator, taskPool, referrerPoolSlots, verifierPoolSlots)
 	})
 
 	if err := taskPool.Wait(); err != nil {
@@ -187,8 +172,8 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
-func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, referrerPoolSlots, verifierPoolSlots workerpool.PoolSlots) ([]*executorTask, error) {
-	pool, ctx := workerpool.NewSharedPool[*ValidationReport](ctx, referrerPoolSlots)
+func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskPool *syncutil.TaskPool, referrerPoolSlots, verifierPoolSlots syncutil.PoolSlots) error {
+	pool, ctx := syncutil.NewSharedWorkerPool[*ValidationReport](ctx, referrerPoolSlots)
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.
@@ -228,22 +213,27 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 	if err != nil && !errors.Is(err, errSubjectPruned) {
 		_, workerError := pool.Wait()
 		if workerError != nil {
-			return nil, fmt.Errorf("failed to list referrers for artifact %s: %w", artifact, workerError)
+			return fmt.Errorf("failed to list referrers for artifact %s: %w", artifact, workerError)
 		}
-		return nil, fmt.Errorf("failed to list referrers for artifact %s: %w", artifact, err)
+		return fmt.Errorf("failed to list referrers for artifact %s: %w", artifact, err)
 	}
 
 	isSubjectPruned := false
 	referrerReports, err := pool.Wait()
 	if err != nil {
 		if !errors.Is(err, errSubjectPruned) {
-			return nil, fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
+			return fmt.Errorf("failed to verify referrers for artifact %s: %w", artifact, err)
 		}
 		isSubjectPruned = true
 	}
 
+	if evaluator != nil {
+		if err := evaluator.Commit(ctx, task.artifactDesc.Digest.String()); err != nil {
+			return fmt.Errorf("failed to commit the artifact %s: %w", artifact, err)
+		}
+	}
+
 	// process reports
-	var newTasks []*executorTask
 	for _, referrerReport := range referrerReports {
 		if referrerReport == nil {
 			continue
@@ -255,26 +245,23 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 			// add a new task
 			referrerArtifact := task.artifact
 			referrerArtifact.Reference = referrerReport.Artifact.Digest.String()
-			newTasks = append(newTasks, &executorTask{
+			newTask := &executorTask{
 				artifact:      referrerArtifact,
 				artifactDesc:  referrerReport.Artifact,
 				subjectReport: referrerReport,
+			}
+			artifactTaskPool.Submit(func() error {
+				return e.verifySubjectAgainstReferrers(ctx, newTask, repo, referenceTypes, evaluator, artifactTaskPool, referrerPoolSlots, verifierPoolSlots)
 			})
 		}
 	}
-
-	if evaluator != nil {
-		if err := evaluator.Commit(ctx, task.artifactDesc.Digest.String()); err != nil {
-			return nil, fmt.Errorf("failed to commit the artifact %s: %w", artifact, err)
-		}
-	}
-	return newTasks, nil
+	return nil
 }
 
 // verifyArtifact verifies the artifact by all configured verifiers and returns
 // error if any of the verifier fails.
-func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator, verifierPoolSlots workerpool.PoolSlots) ([]*VerificationResult, error) {
-	pool, ctx := workerpool.NewSharedPool[*VerificationResult](ctx, verifierPoolSlots)
+func (e *Executor) verifyArtifact(ctx context.Context, repo string, subjectDesc, artifact ocispec.Descriptor, evaluator Evaluator, verifierPoolSlots syncutil.PoolSlots) ([]*VerificationResult, error) {
+	pool, ctx := syncutil.NewSharedWorkerPool[*VerificationResult](ctx, verifierPoolSlots)
 	for i := range e.Verifiers {
 		verifier := e.Verifiers[i]
 		if !verifier.Verifiable(artifact) {
