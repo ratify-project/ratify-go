@@ -252,3 +252,244 @@ func TestWorkerPool_DedicatedPoolClosesSlots(t *testing.T) {
 		t.Fatal("expected poolSlots channel to be closed and readable, but it's not")
 	}
 }
+
+func TestWorkerPool_Cancellation(t *testing.T) {
+	t.Run("parent cancel child", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Create parent worker pool
+		parentPool, ctxParent := NewWorkerPool[int](ctx, 1)
+
+		// Create child worker pool using parent's context
+		childPool, ctxChild := NewWorkerPool[int](ctxParent, 1)
+
+		// Channels to track task execution
+		parentTaskStarted := make(chan bool)
+		childTaskStarted := make(chan bool)
+		parentTaskCancelled := make(chan bool)
+		childTaskCancelled := make(chan bool)
+
+		// Add task to parent pool
+		err := parentPool.Go(func() (int, error) {
+			parentTaskStarted <- true
+			select {
+			case <-ctxParent.Done():
+				parentTaskCancelled <- true
+				return 0, ctxParent.Err()
+			case <-time.After(5 * time.Second):
+				return 1, nil
+			}
+		})
+		if err != nil {
+			t.Fatalf("failed to submit parent task: %v", err)
+		}
+
+		// Add task to child pool
+		err = childPool.Go(func() (int, error) {
+			childTaskStarted <- true
+			select {
+			case <-ctxChild.Done():
+				childTaskCancelled <- true
+				return 0, ctxChild.Err()
+			case <-time.After(5 * time.Second):
+				return 2, nil
+			}
+		})
+		if err != nil {
+			t.Fatalf("failed to submit child task: %v", err)
+		}
+
+		// Wait for both tasks to start
+		<-parentTaskStarted
+		<-childTaskStarted
+
+		// Cancel the root context (parent of parent pool)
+		cancel()
+
+		// Both parent and child tasks should be cancelled
+		select {
+		case <-parentTaskCancelled:
+		case <-time.After(1 * time.Second):
+			t.Fatal("parent task was not cancelled within timeout")
+		}
+
+		select {
+		case <-childTaskCancelled:
+		case <-time.After(1 * time.Second):
+			t.Fatal("child task was not cancelled within timeout")
+		}
+
+		// Both pools should return cancellation errors
+		_, err = parentPool.Wait()
+		if err == nil {
+			t.Fatal("expected cancellation error from parent pool, got nil")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled error from parent pool, got: %v", err)
+		}
+
+		_, err = childPool.Wait()
+		if err == nil {
+			t.Fatal("expected cancellation error from child pool, got nil")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled error from child pool, got: %v", err)
+		}
+	})
+
+	t.Run("child cancel does not affect parent", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Create parent worker pool
+		parentPool, ctxParent := NewWorkerPool[int](ctx, 1)
+
+		// Create child worker pool using parent's context
+		childPool, _ := NewWorkerPool[int](ctxParent, 1)
+
+		// Channels to track task execution
+		parentTaskStarted := make(chan bool)
+		childTaskStarted := make(chan bool)
+		parentTaskCompleted := make(chan bool)
+
+		// Add task to parent pool that should complete successfully
+		err := parentPool.Go(func() (int, error) {
+			parentTaskStarted <- true
+			// Parent task does work and completes normally
+			time.Sleep(200 * time.Millisecond)
+			parentTaskCompleted <- true
+			return 1, nil
+		})
+		if err != nil {
+			t.Fatalf("failed to submit parent task: %v", err)
+		}
+
+		// Add task to child pool that will encounter an error (simulating child cancellation)
+		err = childPool.Go(func() (int, error) {
+			childTaskStarted <- true
+			// Child task fails quickly
+			time.Sleep(50 * time.Millisecond)
+			return 0, errors.New("child task failed")
+		})
+		if err != nil {
+			t.Fatalf("failed to submit child task: %v", err)
+		}
+
+		// Wait for both tasks to start
+		<-parentTaskStarted
+		<-childTaskStarted
+
+		// Parent task should complete successfully despite child failure
+		select {
+		case <-parentTaskCompleted:
+		case <-time.After(1 * time.Second):
+			t.Fatal("parent task did not complete within timeout")
+		}
+
+		// Parent context should still be active
+		select {
+		case <-ctxParent.Done():
+			t.Fatal("parent context should not be cancelled when child fails")
+		default:
+			// Good, parent context is still active
+		}
+
+		// Parent pool should complete successfully
+		parentResults, err := parentPool.Wait()
+		if err != nil {
+			t.Fatalf("parent pool should not have error, got: %v", err)
+		}
+		if len(parentResults) != 1 || parentResults[0] != 1 {
+			t.Fatalf("expected parent result [1], got %v", parentResults)
+		}
+
+		// Child pool should have the error
+		_, err = childPool.Wait()
+		if err == nil {
+			t.Fatal("expected error from child pool, got nil")
+		}
+		expectedErrMsg := "child task failed"
+		if err.Error() != expectedErrMsg {
+			t.Fatalf("expected error message %q, got %q", expectedErrMsg, err.Error())
+		}
+	})
+
+	t.Run("multiple children with independent cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Create parent worker pool
+		parentPool, ctxParent := NewWorkerPool[int](ctx, 1)
+
+		// Create two child worker pools
+		child1Pool, _ := NewWorkerPool[int](ctxParent, 1)
+		child2Pool, _ := NewWorkerPool[int](ctxParent, 1)
+
+		// Channels to track execution
+		parentTaskCompleted := make(chan bool)
+		child1TaskStarted := make(chan bool)
+		child2TaskCompleted := make(chan bool)
+
+		// Parent task that should complete
+		err := parentPool.Go(func() (int, error) {
+			time.Sleep(150 * time.Millisecond)
+			parentTaskCompleted <- true
+			return 1, nil
+		})
+		if err != nil {
+			t.Fatalf("failed to submit parent task: %v", err)
+		}
+
+		// Child1 task that will fail
+		err = child1Pool.Go(func() (int, error) {
+			child1TaskStarted <- true
+			time.Sleep(50 * time.Millisecond)
+			return 0, errors.New("child1 failed")
+		})
+		if err != nil {
+			t.Fatalf("failed to submit child1 task: %v", err)
+		}
+
+		// Child2 task that should complete
+		err = child2Pool.Go(func() (int, error) {
+			time.Sleep(100 * time.Millisecond)
+			child2TaskCompleted <- true
+			return 2, nil
+		})
+		if err != nil {
+			t.Fatalf("failed to submit child2 task: %v", err)
+		}
+
+		// Wait for child1 to start
+		<-child1TaskStarted
+
+		// Wait for parent and child2 to complete
+		<-parentTaskCompleted
+		<-child2TaskCompleted
+
+		// Parent should complete successfully
+		parentResults, err := parentPool.Wait()
+		if err != nil {
+			t.Fatalf("parent pool should not have error, got: %v", err)
+		}
+		if len(parentResults) != 1 || parentResults[0] != 1 {
+			t.Fatalf("expected parent result [1], got %v", parentResults)
+		}
+
+		// Child1 should have error
+		_, err = child1Pool.Wait()
+		if err == nil {
+			t.Fatal("expected error from child1 pool, got nil")
+		}
+
+		// Child2 should complete successfully
+		child2Results, err := child2Pool.Wait()
+		if err != nil {
+			t.Fatalf("child2 pool should not have error, got: %v", err)
+		}
+		if len(child2Results) != 1 || child2Results[0] != 2 {
+			t.Fatalf("expected child2 result [2], got %v", child2Results)
+		}
+	})
+}
