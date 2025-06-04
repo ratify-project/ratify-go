@@ -128,7 +128,7 @@ func (p *WorkerPool[Result]) Go(task func() (Result, error)) error {
 // Wait blocks until all tasks in the pool have completed.
 func (p *WorkerPool[Result]) Wait() ([]Result, error) {
 	if !p.waitOnce() {
-		return nil, errors.New("Wait() can only be called once")
+		return nil, errors.New("WorkerPool.Wait() can only be called once")
 	}
 
 	defer func() {
