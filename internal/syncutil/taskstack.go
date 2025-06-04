@@ -37,6 +37,9 @@ type taskStack[Task any] struct {
 
 // NewTaskStack creates a new TaskStack with the specified channel buffer size.
 func NewTaskStack[Task any](bufferSize int) *taskStack[Task] {
+	if bufferSize < 1 {
+		bufferSize = 1
+	}
 	return &taskStack[Task]{
 		ch: make(chan Task, bufferSize),
 	}

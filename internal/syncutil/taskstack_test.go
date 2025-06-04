@@ -26,7 +26,7 @@ func TestNewTaskStack(t *testing.T) {
 	t.Run("creates new task stack with buffer size", func(t *testing.T) {
 		stack := NewTaskStack[int](5)
 		if stack == nil {
-			t.Error("NewTaskStack returned nil")
+			t.Fatal("NewTaskStack returned nil")
 		}
 		if cap(stack.ch) != 5 {
 			t.Errorf("Expected channel buffer size 5, got %d", cap(stack.ch))
@@ -39,9 +39,9 @@ func TestNewTaskStack(t *testing.T) {
 	t.Run("creates task stack with zero buffer size", func(t *testing.T) {
 		stack := NewTaskStack[string](0)
 		if stack == nil {
-			t.Error("NewTaskStack returned nil")
+			t.Fatal("NewTaskStack returned nil")
 		}
-		if cap(stack.ch) != 0 {
+		if cap(stack.ch) != 1 {
 			t.Errorf("Expected channel buffer size 0, got %d", cap(stack.ch))
 		}
 	})
@@ -166,9 +166,8 @@ func TestTaskStack_Close(t *testing.T) {
 		count := 0
 		for task := range stack.Channel() {
 			count++
-			if count > 2 {
-				t.Error("Too many tasks received")
-				break
+			if count != 1 {
+				t.Fatalf("Expected only one task, got %d", count)
 			}
 			t.Logf("Received task: %d", task)
 		}
