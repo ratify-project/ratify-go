@@ -86,6 +86,10 @@ func (s *taskStack[Task]) Channel() <-chan Task {
 // Close closes the channel and stops the draining goroutine.
 func (s *taskStack[Task]) Close() {
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
 	s.closed = true
 	s.mu.Unlock()
 
