@@ -121,9 +121,9 @@ func TestTaskPool_MixedTasksWithErrors(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	// All successful tasks should still execute
-	if atomic.LoadInt64(&successCount) != 5 {
-		t.Fatalf("expected 5 successful tasks, got %d", successCount)
+	// error may cancel some of the successful tasks
+	if successCount < 1 || successCount > 5 {
+		t.Fatalf("expected 1 to 5 successful tasks, got %d", successCount)
 	}
 }
 

@@ -17,11 +17,12 @@ package syncutil
 
 import (
 	"context"
+	"sync"
 )
 
 // TaskPool is a pool that manages a stack of tasks and executes them concurrently
 type TaskPool struct {
-	wg         waitGroup
+	wg         sync.WaitGroup
 	tasks      *taskStack[func() error]
 	workerpool *WorkerPool[any]
 }
@@ -36,29 +37,20 @@ func NewTaskPool(ctx context.Context, size int) (*TaskPool, context.Context) {
 	}
 	pool, ctx := NewWorkerPool[any](ctx, size)
 	p := &TaskPool{
-		wg:         waitGroup{},
+		wg:         sync.WaitGroup{},
 		tasks:      NewTaskStack[func() error](size),
 		workerpool: pool,
 	}
 
 	// Start a goroutine to process tasks from the stack
 	go func() {
-		for {
-			select {
-			case <-p.wg.Complete():
-				return
-			case task, ok := <-p.tasks.Channel():
-				if !ok {
-					return
-				}
-
-				if err := pool.Go(func() (any, error) {
-					defer p.wg.Done()
-					return nil, task()
-				}); err != nil {
-					p.wg.Done()
-					// error will be handled by Wait()
-				}
+		for task := range p.tasks.Channel() {
+			if err := pool.Go(func() (any, error) {
+				defer p.wg.Done()
+				return nil, task()
+			}); err != nil {
+				p.wg.Done()
+				// error will be handled by Wait()
 			}
 		}
 	}()
