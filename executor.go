@@ -172,8 +172,8 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 
 // verifySubjectAgainstReferrers verifies the subject artifact against all
 // referrers in the store and produces new tasks for each referrer.
-func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskPool *syncutil.TaskPool, referrerPoolSlots, verifierPoolSlots syncutil.PoolSlots) error {
-	pool, ctx := syncutil.NewSharedWorkerPool[*ValidationReport](ctx, referrerPoolSlots)
+func (e *Executor) verifySubjectAgainstReferrers(parentctx context.Context, task *executorTask, repo string, referenceTypes []string, evaluator Evaluator, artifactTaskPool *syncutil.TaskPool, referrerPoolSlots, verifierPoolSlots syncutil.PoolSlots) error {
+	pool, ctx := syncutil.NewSharedWorkerPool[*ValidationReport](parentctx, referrerPoolSlots)
 	artifact := task.artifact.String()
 
 	// We need to verify the artifact against its required referrer artifacts.
@@ -251,7 +251,7 @@ func (e *Executor) verifySubjectAgainstReferrers(ctx context.Context, task *exec
 				subjectReport: referrerReport,
 			}
 			artifactTaskPool.Submit(func() error {
-				return e.verifySubjectAgainstReferrers(ctx, newTask, repo, referenceTypes, evaluator, artifactTaskPool, referrerPoolSlots, verifierPoolSlots)
+				return e.verifySubjectAgainstReferrers(parentctx, newTask, repo, referenceTypes, evaluator, artifactTaskPool, referrerPoolSlots, verifierPoolSlots)
 			})
 		}
 	}
