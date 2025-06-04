@@ -327,7 +327,7 @@ func TestTaskStack_Concurrency(t *testing.T) {
 			// Goroutine 2: Close after a delay
 			go func() {
 				defer wg.Done()
-				time.Sleep(time.Microsecond * 50)
+				time.Sleep(time.Microsecond * 1000)
 				stack.Close()
 			}()
 

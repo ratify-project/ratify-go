@@ -28,11 +28,8 @@ type waitGroup struct {
 
 // Complete returns a channel that will be closed when all tasks in the wait group are complete.
 func (wg *waitGroup) Complete() <-chan struct{} {
-	if wg.done == nil {
-		wg.done = make(chan struct{})
-	}
-
 	wg.doneOnce.Do(func() {
+		wg.done = make(chan struct{})
 		go func() {
 			wg.Wait()
 			close(wg.done)

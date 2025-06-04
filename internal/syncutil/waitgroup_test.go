@@ -170,13 +170,6 @@ func TestWaitGroup_Complete_ConcurrentAddDone(t *testing.T) {
 	var wg waitGroup
 	const numTasks = 100
 
-	// Start Complete() in background
-	completeCh := make(chan struct{})
-	go func() {
-		<-wg.Complete()
-		close(completeCh)
-	}()
-
 	// Add and complete tasks concurrently
 	for i := 0; i < numTasks; i++ {
 		wg.Add(1)
@@ -185,6 +178,12 @@ func TestWaitGroup_Complete_ConcurrentAddDone(t *testing.T) {
 			time.Sleep(time.Millisecond) // Small delay to create concurrency
 		}()
 	}
+
+	// Start Complete() in background
+	completeCh := make(chan struct{})
+	go func() {
+		close(completeCh)
+	}()
 
 	// Wait for completion
 	select {

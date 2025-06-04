@@ -57,13 +57,13 @@ func (s *taskStack[Task]) Push(task Task) {
 	s.stack.Push(task)
 
 	s.drainingOnce.Do(func() {
+		s.waitingDraining.Add(1)
 		go s.drainStack()
 	})
 }
 
 // drainStack continuously moves tasks from the stack to the channel
 func (s *taskStack[Task]) drainStack() {
-	s.waitingDraining.Add(1)
 	defer s.waitingDraining.Done()
 	for {
 		s.mu.Lock()
