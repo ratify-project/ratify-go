@@ -81,7 +81,7 @@ func (p *Pool[Result]) Go(task func() (Result, error)) error {
 		return errPoolCompleted
 	}
 
-	// check completion
+	// check cancellation
 	select {
 	case <-p.ctx.Done():
 		if context.Cause(p.ctx) != nil {

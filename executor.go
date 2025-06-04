@@ -22,6 +22,7 @@ import (
 
 	"slices"
 
+	"github.com/notaryproject/ratify-go/internal/task"
 	"github.com/notaryproject/ratify-go/internal/workerpool"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/registry"
@@ -157,31 +158,28 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 			Artifact: desc,
 		},
 	}
-	taskQueue := []*executorTask{rootTask}
-	for len(taskQueue) > 0 {
-		pool, ctx := workerpool.New[[]*executorTask](ctx, e.MaxWorkers)
 
-		// prepare batch of tasks to process
-		currentBatch := taskQueue
-		taskQueue = nil
-
-		// start batch processing
-		for i := range currentBatch {
-			task := currentBatch[i]
-			if err := pool.Go(func() ([]*executorTask, error) {
-				return e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes, evaluator, referrerPoolSlots, verifierPoolSlots)
-			}); err != nil {
-				// error will be handled by Wait()
-				break
-			}
-		}
-
-		// wait for new tasks and add them to the task queue
-		allNewTasks, err := pool.Wait()
+	taskPool, ctx := task.NewTaskPool(ctx, e.MaxWorkers)
+	var fn func(*executorTask) error
+	fn = func(task *executorTask) error {
+		newTasks, err := e.verifySubjectAgainstReferrers(ctx, task, repo, opts.ReferenceTypes, evaluator, referrerPoolSlots, verifierPoolSlots)
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
-		taskQueue = slices.Concat(allNewTasks...)
+		for i := range newTasks {
+			newTask := newTasks[i]
+			taskPool.Submit(func() error {
+				return fn(newTask)
+			})
+		}
+		return nil
+	}
+	taskPool.Submit(func() error {
+		return fn(rootTask)
+	})
+
+	if err := taskPool.Wait(); err != nil {
+		return nil, nil, fmt.Errorf("failed to verify subject artifact %s: %w", opts.Subject, err)
 	}
 
 	return rootTask.subjectReport.ArtifactReports, evaluator, nil
