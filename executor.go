@@ -19,7 +19,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
 	"slices"
 
 	"github.com/notaryproject/ratify-go/internal/syncutil"
