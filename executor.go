@@ -144,6 +144,7 @@ func (e *Executor) aggregateVerifierReports(ctx context.Context, opts ValidateAr
 	}
 
 	// create worker pools for referrer and verifier tasks
+	// all workers should be completed before return, so defer closing the pools.
 	referrerPoolSlots := make(syncutil.PoolSlots, e.MaxWorkers)
 	defer close(referrerPoolSlots)
 	verifierPoolSlots := make(syncutil.PoolSlots, e.MaxWorkers)
