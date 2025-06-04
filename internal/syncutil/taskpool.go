@@ -27,7 +27,13 @@ type TaskPool struct {
 }
 
 // NewTaskPool creates a new TaskPool with the specified size.
+//
+// size is the number of concurrent tasks that can be executed in the pool.
+// If size is less than or equal to 0, it defaults to 1.
 func NewTaskPool(ctx context.Context, size int) (*TaskPool, context.Context) {
+	if size <= 0 {
+		size = 1
+	}
 	pool, ctx := NewWorkerPool[any](ctx, size)
 	p := &TaskPool{
 		wg:         waitGroup{},
@@ -46,14 +52,13 @@ func NewTaskPool(ctx context.Context, size int) (*TaskPool, context.Context) {
 					return
 				}
 
-				// error will be handled by Wait()
-				// try best to complete all tasks
-				pool.Go(func() (any, error) {
-					defer func() {
-						p.wg.Done()
-					}()
+				if err := pool.Go(func() (any, error) {
+					defer p.wg.Done()
 					return nil, task()
-				})
+				}); err != nil {
+					p.wg.Done()
+					// error will be handled by Wait()
+				}
 			}
 		}
 	}()

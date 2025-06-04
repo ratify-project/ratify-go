@@ -53,7 +53,12 @@ type WorkerPool[Result any] struct {
 // NewWorkerPool creates a worker pool with provided size.
 //
 // Result is the type of the results returned by the tasks in the pool.
+// size is the number of concurrent tasks that can be executed in the pool.
+// If size is less than or equal to 0, it defaults to 1.
 func NewWorkerPool[Result any](ctx context.Context, size int) (*WorkerPool[Result], context.Context) {
+	if size <= 0 {
+		size = 1
+	}
 	pool, ctx := NewSharedWorkerPool[Result](ctx, make(PoolSlots, size))
 	pool.dedicatedPool = true
 	return pool, ctx
